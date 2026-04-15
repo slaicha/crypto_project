@@ -1,0 +1,4 @@
+Signing 20 messages with the SAME key...
+
+SUCCESS: Forged signature for 'Retreat at noon'!
+Verification of forged signature: True
