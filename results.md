@@ -1,27 +1,6 @@
 # Week 1 Results: One-Time Signatures (OTS)
 
-## 1. Implementation Overview
-
-We implemented two primary hash-based one-time signature schemes using Python and the SHA-256 hash function:
-
-- **Lamport OTS**: A classic scheme where each bit of the message hash is signed by revealing one of two secret blocks.
-- **Winternitz OTS (WOTS)**: An optimized scheme that uses hash chains to sign multi-bit digits, significantly reducing signature size at the cost of increased computation.
-
-### Project Structure
-```
-crypto_project/
-├── src/
-│   ├── utils.py               # Hashing and bit manipulation
-│   ├── lamport.py             # Lamport OTS implementation
-│   ├── wots.py                # Winternitz OTS implementation
-│   └── security_simulation.py  # Key reuse attack demonstration
-├── benchmarks/
-│   └── week1_analysis.py      # Performance measurement script
-└── tests/
-    └── run_tests.py           # Unit tests
-```
-
-## 2. Performance Benchmarking
+## 1. Performance Benchmarking
 
 The following benchmarks were recorded on the local system (time in milliseconds, size in bytes).
 
@@ -37,7 +16,7 @@ As the Winternitz parameter $w$ increases:
 - **Signature size decreases**: WOTS (w=256) is ~7.5x smaller than Lamport.
 - **Computation time increases**: WOTS (w=256) requires significantly more hash operations during key generation, signing, and verification.
 
-## 3. Security Analysis: Key Reuse Simulation
+## 2. Security Analysis: Key Reuse Simulation
 
 ### Findings
 - Lamport signatures are strictly **one-time**.
@@ -57,7 +36,7 @@ Verification of forged signature: True
 
 **Impact**: Key reuse completely breaks the security of OTS schemes. This necessitates the use of more complex structures like Merkle Trees (Week 2) to manage multiple keys securely.
 
-## 4. Verification
+## 3. Verification
 All implementations were verified using unit tests covering:
 - Correctness (valid signatures verify successfully).
 - Integrity (signatures fail if the message or signature is tampered with).
