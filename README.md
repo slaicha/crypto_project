@@ -26,6 +26,15 @@ crypto_project/
 │   ├── week1_analysis.py      # Week 1 performance measurement
 │   ├── week2_analysis.py      # Week 2 MSS performance measurement
 │   ├── plot_week2.py          # Generates the Week 2 plots
+│   ├── week3_analysis.py      # Week 3 comprehensive parameter sweep
+│   ├── plot_week3.py          # Generates all Week 3 plots (6 figures)
+│   ├── week3_results.json     # Raw benchmark data from Week 3
+│   ├── week3_ots_sig_size.png # Plot: OTS sig size vs w
+│   ├── week3_ots_times.png    # Plot: OTS sign/verify time vs w
+│   ├── week3_mss_keygen.png   # Plot: MSS keygen time vs height
+│   ├── week3_mss_sign_verify.png # Plot: MSS sign & verify vs height
+│   ├── week3_mss_sig_size.png # Plot: MSS sig size vs height
+│   ├── week3_mss_w_tradeoff.png  # Plot: MSS size-vs-speed trade-off
 │   ├── week2_keygen.png       # Plot: KeyGen time vs tree height
 │   ├── week2_signature_size.png # Plot: Signature size vs tree height
 │   └── simulation_results.txt # Detailed attack log
@@ -99,6 +108,69 @@ python3 -m pytest tests/test_merkle.py   # 7 tests
 4. **WOTS leaves give ~5.5× smaller signatures** than Lamport leaves (~4.4 KB vs ~24.7 KB at `h=6`), at the cost of ~6× more work per sign/verify. The choice between them is a clean size-vs-speed trade-off.
 
 These observations motivate Week 3 (parameter tuning to find sweet spots for `h` and `w`) and Week 4 (stateless / hypertree constructions that avoid the `O(2^h)` keygen cost).
+
+## Week 3 — Performance Evaluation & Parameter Tuning
+
+### What was built
+- `benchmarks/week3_analysis.py` — comprehensive benchmark script that runs three systematic sweeps:
+  1. **OTS primitive sweep**: Lamport + WOTS for `w ∈ {4, 8, 16, 32, 64, 128, 256}` — keygen, sign, verify times + signature/key sizes
+  2. **MSS height sweep**: `h ∈ {1..8}` for both Lamport and WOTS (w=16) leaves
+  3. **MSS w-sweep** at fixed `h=4`: WOTS `w ∈ {4..256}` in the full Merkle context
+- `benchmarks/plot_week3.py` — generates 6 publication-quality plots
+- All measurements averaged over 5 runs (median reported)
+
+### How to run
+```bash
+source venv/bin/activate
+python benchmarks/week3_analysis.py   # ~55 seconds, saves JSON
+python benchmarks/plot_week3.py       # reads JSON, generates 6 PNGs
+```
+
+### Results
+
+#### OTS Primitive Comparison
+
+| Scheme | KeyGen (ms) | Sign (ms) | Verify (ms) | Sig Size (B) | PK Size (B) |
+|---|---|---|---|---|---|
+| Lamport | 0.53 | 0.03 | 0.17 | 8,192 | 16,384 |
+| WOTS (w=4) | 0.29 | 0.15 | 0.15 | 4,256 | 4,256 |
+| WOTS (w=16) | 0.56 | 0.30 | 0.28 | 2,144 | 2,144 |
+| WOTS (w=64) | 1.49 | 0.68 | 0.84 | 1,440 | 1,440 |
+| WOTS (w=256) | 4.47 | 2.28 | 2.29 | 1,088 | 1,088 |
+
+![OTS signature size vs w](benchmarks/week3_ots_sig_size.png)
+
+![OTS computation times vs w](benchmarks/week3_ots_times.png)
+
+#### MSS Height Sweep (selected)
+
+| Config | Leaves | KeyGen (ms) | Sign (ms) | Verify (ms) | Sig Size (B) |
+|---|---|---|---|---|---|
+| h=2, Lamport | 4 | 2.49 | 0.04 | 0.27 | 24,644 |
+| h=4, Lamport | 16 | 10.04 | 0.05 | 0.28 | 24,708 |
+| h=8, Lamport | 256 | 174.39 | 0.10 | 0.30 | 24,836 |
+| h=2, WOTS w=16 | 4 | 2.30 | 0.30 | 0.30 | 4,356 |
+| h=4, WOTS w=16 | 16 | 9.08 | 0.30 | 0.30 | 4,420 |
+| h=8, WOTS w=16 | 256 | 144.46 | 0.31 | 0.30 | 4,548 |
+
+![MSS keygen vs height](benchmarks/week3_mss_keygen.png)
+
+![MSS sign and verify vs height](benchmarks/week3_mss_sign_verify.png)
+
+![MSS sig size vs height](benchmarks/week3_mss_sig_size.png)
+
+#### MSS Trade-off (h=4, varying w)
+
+![MSS w trade-off](benchmarks/week3_mss_w_tradeoff.png)
+
+### Key observations
+1. **Signature size decreases logarithmically with w** — each doubling of `w` reduces chain count by `log₂(w)` bits per digit. WOTS (w=256) is 7.5× smaller than Lamport.
+2. **Computation cost grows linearly with w** — each chain is `w-1` hashes long. WOTS (w=256) is ~75× slower to sign than Lamport.
+3. **KeyGen scales as O(2^h)**, confirmed by near-perfect exponential growth on log-scale. Sign and Verify remain effectively constant in `h`.
+4. **Optimal parameters**: `w=16` with `h=4`–`6` offers the best practical balance — signatures under 4.5 KB, sign+verify under 0.6 ms, keygen under 40 ms.
+5. **The size-vs-speed trade-off is smooth and predictable**, allowing practitioners to pick the right point on the Pareto curve for their deployment constraints.
+
+Full numerical results are in `results.md`; raw data in `benchmarks/week3_results.json`.
 
 ## Contributors
 - **Salwa Laicha** ([@slaicha](https://github.com/slaicha)) — Week 1 (Lamport OTS, WOTS, key-reuse attack demonstration)

@@ -1,0 +1,318 @@
+{
+  "ots_sweep": [
+    {
+      "scheme": "Lamport",
+      "w": null,
+      "keygen_ms": 0.5286,
+      "sign_ms": 0.0267,
+      "verify_ms": 0.1667,
+      "sig_size": 8192,
+      "pk_size": 16384,
+      "sk_size": 16384
+    },
+    {
+      "scheme": "WOTS",
+      "w": 4,
+      "keygen_ms": 0.2887,
+      "sign_ms": 0.1521,
+      "verify_ms": 0.1493,
+      "sig_size": 4256,
+      "pk_size": 4256,
+      "sk_size": 4256
+    },
+    {
+      "scheme": "WOTS",
+      "w": 8,
+      "keygen_ms": 0.3819,
+      "sign_ms": 0.1822,
+      "verify_ms": 0.2134,
+      "sig_size": 2880,
+      "pk_size": 2880,
+      "sk_size": 2880
+    },
+    {
+      "scheme": "WOTS",
+      "w": 16,
+      "keygen_ms": 0.5593,
+      "sign_ms": 0.3026,
+      "verify_ms": 0.2778,
+      "sig_size": 2144,
+      "pk_size": 2144,
+      "sk_size": 2144
+    },
+    {
+      "scheme": "WOTS",
+      "w": 32,
+      "keygen_ms": 0.9177,
+      "sign_ms": 0.4704,
+      "verify_ms": 0.4659,
+      "sig_size": 1760,
+      "pk_size": 1760,
+      "sk_size": 1760
+    },
+    {
+      "scheme": "WOTS",
+      "w": 64,
+      "keygen_ms": 1.4851,
+      "sign_ms": 0.6781,
+      "verify_ms": 0.845,
+      "sig_size": 1440,
+      "pk_size": 1440,
+      "sk_size": 1440
+    },
+    {
+      "scheme": "WOTS",
+      "w": 128,
+      "keygen_ms": 2.532,
+      "sign_ms": 1.2724,
+      "verify_ms": 1.3075,
+      "sig_size": 1248,
+      "pk_size": 1248,
+      "sk_size": 1248
+    },
+    {
+      "scheme": "WOTS",
+      "w": 256,
+      "keygen_ms": 4.4727,
+      "sign_ms": 2.284,
+      "verify_ms": 2.2919,
+      "sig_size": 1088,
+      "pk_size": 1088,
+      "sk_size": 1088
+    }
+  ],
+  "mss_height_sweep": [
+    {
+      "scheme": "lamport",
+      "w": null,
+      "height": 1,
+      "leaves": 2,
+      "keygen_ms": 1.2357,
+      "sign_ms": 0.0331,
+      "verify_ms": 0.2668,
+      "sig_size": 24612
+    },
+    {
+      "scheme": "lamport",
+      "w": null,
+      "height": 2,
+      "leaves": 4,
+      "keygen_ms": 2.4917,
+      "sign_ms": 0.0384,
+      "verify_ms": 0.2675,
+      "sig_size": 24644
+    },
+    {
+      "scheme": "lamport",
+      "w": null,
+      "height": 3,
+      "leaves": 8,
+      "keygen_ms": 5.1146,
+      "sign_ms": 0.0465,
+      "verify_ms": 0.2573,
+      "sig_size": 24676
+    },
+    {
+      "scheme": "lamport",
+      "w": null,
+      "height": 4,
+      "leaves": 16,
+      "keygen_ms": 10.0367,
+      "sign_ms": 0.047,
+      "verify_ms": 0.2768,
+      "sig_size": 24708
+    },
+    {
+      "scheme": "lamport",
+      "w": null,
+      "height": 5,
+      "leaves": 32,
+      "keygen_ms": 20.3526,
+      "sign_ms": 0.0472,
+      "verify_ms": 0.2697,
+      "sig_size": 24740
+    },
+    {
+      "scheme": "lamport",
+      "w": null,
+      "height": 6,
+      "leaves": 64,
+      "keygen_ms": 41.646,
+      "sign_ms": 0.0529,
+      "verify_ms": 0.2742,
+      "sig_size": 24772
+    },
+    {
+      "scheme": "lamport",
+      "w": null,
+      "height": 7,
+      "leaves": 128,
+      "keygen_ms": 84.2631,
+      "sign_ms": 0.0818,
+      "verify_ms": 0.2837,
+      "sig_size": 24804
+    },
+    {
+      "scheme": "lamport",
+      "w": null,
+      "height": 8,
+      "leaves": 256,
+      "keygen_ms": 174.3867,
+      "sign_ms": 0.1028,
+      "verify_ms": 0.2987,
+      "sig_size": 24836
+    },
+    {
+      "scheme": "wots",
+      "w": 16,
+      "height": 1,
+      "leaves": 2,
+      "keygen_ms": 1.1523,
+      "sign_ms": 0.3061,
+      "verify_ms": 0.298,
+      "sig_size": 4324
+    },
+    {
+      "scheme": "wots",
+      "w": 16,
+      "height": 2,
+      "leaves": 4,
+      "keygen_ms": 2.2964,
+      "sign_ms": 0.3035,
+      "verify_ms": 0.3011,
+      "sig_size": 4356
+    },
+    {
+      "scheme": "wots",
+      "w": 16,
+      "height": 3,
+      "leaves": 8,
+      "keygen_ms": 4.4913,
+      "sign_ms": 0.2906,
+      "verify_ms": 0.2892,
+      "sig_size": 4388
+    },
+    {
+      "scheme": "wots",
+      "w": 16,
+      "height": 4,
+      "leaves": 16,
+      "keygen_ms": 9.0778,
+      "sign_ms": 0.3023,
+      "verify_ms": 0.2992,
+      "sig_size": 4420
+    },
+    {
+      "scheme": "wots",
+      "w": 16,
+      "height": 5,
+      "leaves": 32,
+      "keygen_ms": 18.2755,
+      "sign_ms": 0.3049,
+      "verify_ms": 0.3054,
+      "sig_size": 4452
+    },
+    {
+      "scheme": "wots",
+      "w": 16,
+      "height": 6,
+      "leaves": 64,
+      "keygen_ms": 36.3092,
+      "sign_ms": 0.3176,
+      "verify_ms": 0.3023,
+      "sig_size": 4484
+    },
+    {
+      "scheme": "wots",
+      "w": 16,
+      "height": 7,
+      "leaves": 128,
+      "keygen_ms": 72.2961,
+      "sign_ms": 0.3049,
+      "verify_ms": 0.304,
+      "sig_size": 4516
+    },
+    {
+      "scheme": "wots",
+      "w": 16,
+      "height": 8,
+      "leaves": 256,
+      "keygen_ms": 144.4621,
+      "sign_ms": 0.3142,
+      "verify_ms": 0.3004,
+      "sig_size": 4548
+    }
+  ],
+  "mss_w_sweep": [
+    {
+      "scheme": "wots",
+      "w": 4,
+      "height": 4,
+      "leaves": 16,
+      "keygen_ms": 4.9491,
+      "sign_ms": 0.1605,
+      "verify_ms": 0.1831,
+      "sig_size": 8644
+    },
+    {
+      "scheme": "wots",
+      "w": 8,
+      "height": 4,
+      "leaves": 16,
+      "keygen_ms": 6.2339,
+      "sign_ms": 0.1819,
+      "verify_ms": 0.2315,
+      "sig_size": 5892
+    },
+    {
+      "scheme": "wots",
+      "w": 16,
+      "height": 4,
+      "leaves": 16,
+      "keygen_ms": 9.0942,
+      "sign_ms": 0.303,
+      "verify_ms": 0.3037,
+      "sig_size": 4420
+    },
+    {
+      "scheme": "wots",
+      "w": 32,
+      "height": 4,
+      "leaves": 16,
+      "keygen_ms": 14.6492,
+      "sign_ms": 0.4764,
+      "verify_ms": 0.4725,
+      "sig_size": 3652
+    },
+    {
+      "scheme": "wots",
+      "w": 64,
+      "height": 4,
+      "leaves": 16,
+      "keygen_ms": 23.5229,
+      "sign_ms": 0.6495,
+      "verify_ms": 0.8359,
+      "sig_size": 3012
+    },
+    {
+      "scheme": "wots",
+      "w": 128,
+      "height": 4,
+      "leaves": 16,
+      "keygen_ms": 40.5862,
+      "sign_ms": 1.2228,
+      "verify_ms": 1.343,
+      "sig_size": 2628
+    },
+    {
+      "scheme": "wots",
+      "w": 256,
+      "height": 4,
+      "leaves": 16,
+      "keygen_ms": 70.5948,
+      "sign_ms": 2.2554,
+      "verify_ms": 2.2614,
+      "sig_size": 2308
+    }
+  ]
+}
