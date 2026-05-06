@@ -232,8 +232,6 @@ We ran 200 independent trials per `k`, each using a fresh keypair, signing `k` r
 
 ## Week 4 — Security Analysis
 
-The fourth week of the project asks for one chosen extension. We picked **Security Analysis**, which fits naturally on top of the implementation and benchmark work from Weeks 1–3 and the mandatory key-reuse extension above.
-
 ### How to reproduce
 ```bash
 python3 benchmarks/week4_security_analysis.py   # runs trials + writes 2 PNGs + JSON
@@ -262,15 +260,6 @@ The Week 3 sweeps give us concrete numbers to recommend parameters:
 - **Tree height `h`.** KeyGen scales as `2^h` (dominant cost), but signature size grows by only `32·h` bytes. The sweet spot for "small embedded device that signs occasionally" is `h ≈ 10` (~1024 signatures, KeyGen still well under a second). For a server that needs millions of signatures, real-world standards push `h` up to 20+ via **hypertree** layering — which is exactly the trick SPHINCS+ uses to keep KeyGen practical.
 - **Winternitz `w`.** Week 3 showed a smooth size-vs-speed trade: `w=4` is fastest but largest; `w=256` is smallest but ~6× slower per sign/verify. **`w=16` is the standard choice** in real deployments (XMSS, SPHINCS+) and the data here confirms it lives near the knee of the curve.
 - **Hash output length.** SHA-256 → 128-bit quantum security is sufficient for category-1 use. For higher security categories, swap in SHA-512 or SHA-3 with no algorithmic change to the constructions.
-
-### 4. The state-management problem (and why SPHINCS+ exists)
-
-The biggest practical weakness of MSS is that it is **stateful** — the signer must reliably remember which leaves it has used. Real-world failure modes include:
-- a backed-up VM image being restored (state rolls back, leaves get reused),
-- multi-server deployments where state is not synchronized,
-- a power loss between updating `next_leaf` and persisting the new state.
-
-Each of those leads back to the key-reuse attack quantified in the previous section. **Stateless** hash-based signatures (SPHINCS+ / SLH-DSA) solve this by using a pseudorandom function to derive a leaf index from the message itself, plus a few-time signature (FORS) at the bottom layer to absorb the rare collisions. Implementing the full SPHINCS+ construction was the alternative Week 4 extension; choosing the security-analysis path here lets us *explain why it matters* using numbers from our own benchmarks, rather than adding ~500 lines of cryptographic code that would not have changed any of the Week 1–3 conclusions.
 
 ## Contributors
 - **Salwa Laicha** ([@slaicha](https://github.com/slaicha)) — Week 1 (Lamport OTS, WOTS, key-reuse attack demonstration), Week 3 (performance evaluation and parameter tuning)
