@@ -172,6 +172,106 @@ python benchmarks/plot_week3.py       # reads JSON, generates 6 PNGs
 
 Full numerical results are in `results.md`; raw data in `benchmarks/week3_results.json`.
 
+## Mandatory Extension — Lamport Key-Reuse Attack
+
+> **Project requirement:** *"Simulate key reuse in Lamport signatures and demonstrate how it compromises security. Recover secret material and explain the attack."*
+
+This section delivers each of the three required pieces:
+
+1. **Simulate key reuse** — `benchmarks/week4_security_analysis.py` (and the original `src/security_simulation.py`) sign many messages with the same Lamport secret key.
+2. **Recover the secret material** — the same script rebuilds the 256×2 secret-key matrix from the leaked signatures, byte-for-byte.
+3. **Explain the attack** — see "Why the attack works" below, plus the empirical/theoretical match in the table that follows.
+
+### Recovering the secret material (concrete output)
+
+Running `python3 benchmarks/week4_security_analysis.py` produces, before the statistical sweep, an explicit recovery demonstration. After observing **20 reused signatures**, the attacker reconstructs **all 512** blocks of the secret key, verified byte-exact against the original:
+
+```
+=== RECOVERING SECRET MATERIAL ===
+Reuses observed by attacker : 20
+Secret-key blocks total     : 512  (256 rows x 2 columns)
+Blocks recovered            : 512 (100.0%)
+Recovered blocks that match : 512 / 512  -> recovery is byte-exact: True
+
+Example — secret-key row 0 (true vs recovered, hex-truncated):
+  sk[0][0]  true=cbf9fab4d21151543c4a178e...  recovered=cbf9fab4d21151543c4a178e...  [OK]
+  sk[0][1]  true=bb91fdadcd1b80524586276f...  recovered=bb91fdadcd1b80524586276f...  [OK]
+```
+
+The full recovered key (all 512 blocks in hex) is written to `benchmarks/week4_recovered_secret_key.json` for inspection. Once the secret is recovered, the attacker can sign **any** message — they have the original signing key in their hands.
+
+### Why the attack works
+A Lamport secret key has 256 rows, each with two 32-byte blocks `SK[i][0]` and `SK[i][1]`. Signing a message reveals exactly **one** block per row — the one chosen by the corresponding bit of the message hash. After signing `k` independent random messages with the **same** key, the probability that a *specific* block has not been revealed is `(1/2)^k`. To forge a signature on a target message, the attacker needs all 256 specific blocks selected by the target's hash bits, so
+
+$$P_{\text{forge}}(k) = \bigl(1 - 2^{-k}\bigr)^{256}.$$
+
+### Empirical confirmation
+
+We ran 200 independent trials per `k`, each using a fresh keypair, signing `k` random messages, then attempting to forge a fresh random target. Empirical numbers track the theoretical curve closely:
+
+| k (reuses) | Theoretical P(forge) | Empirical P(forge) | Avg blocks exposed |
+|---|---|---|---|
+| 1  | 0.000 | 0.000 | 50.0% |
+| 4  | 0.000 | 0.000 | 93.9% |
+| 6  | 0.018 | 0.030 | 98.5% |
+| 8  | 0.367 | 0.385 | 99.6% |
+| 10 | 0.779 | 0.835 | 99.9% |
+| 12 | 0.939 | 0.950 | 100.0% |
+| 14 | 0.984 | 1.000 | 100.0% |
+| 20 | 1.000 | 1.000 | 100.0% |
+
+![Forgery probability vs key reuse count](benchmarks/week4_recovery_rate.png)
+
+![Fraction of secret key blocks exposed vs k](benchmarks/week4_bits_recovered.png)
+
+### Take-aways
+- After only **~10 reuses**, an attacker can forge a signature on **any chosen message** with > 78% probability.
+- After **15 reuses**, success is essentially certain.
+- The attack is *passive* — the attacker only needs to observe legitimate signatures, not interact with the signer.
+- This is exactly why Lamport (and WOTS) are called **one-time** signatures and why Merkle aggregation (Week 2) and stateful key management are mandatory for any practical use.
+
+## Week 4 — Security Analysis
+
+The fourth week of the project asks for one chosen extension. We picked **Security Analysis**, which fits naturally on top of the implementation and benchmark work from Weeks 1–3 and the mandatory key-reuse extension above.
+
+### How to reproduce
+```bash
+python3 benchmarks/week4_security_analysis.py   # runs trials + writes 2 PNGs + JSON
+```
+
+### 1. Why hash-based signatures are post-quantum secure
+
+Hash-based signatures rest on a single, very mild assumption: the underlying hash function is **one-way and (second-)preimage resistant**. Unlike RSA or ECDSA, they do **not** rely on the hardness of integer factorization or the discrete logarithm problem — both of which Shor's algorithm breaks in polynomial time on a sufficiently large quantum computer.
+
+The best known quantum attack on a generic hash is **Grover's algorithm**, which only gives a square-root speedup. So a `n`-bit hash that offers `n` bits of classical preimage security still offers roughly `n/2` bits of quantum security. For SHA-256 this means **~128-bit quantum security**, which matches the security level NIST targets for category-1 post-quantum schemes.
+
+This is precisely why NIST selected the hash-based scheme **SLH-DSA (SPHINCS+)** in 2024 as one of its standardized post-quantum signature algorithms, alongside the lattice-based ML-DSA. The constructions in this repository (Lamport → WOTS → MSS) are the same building blocks SPHINCS+ stacks together internally.
+
+### 2. Per-scheme attack surfaces
+
+| Scheme | Main attack surface | Mitigation in this repo |
+|---|---|---|
+| **Lamport OTS** | Key reuse → forgery (see plot above) | Strict one-time use; enforced via state in MSS |
+| **WOTS** | Same key-reuse risk; also: forging a signature with smaller digits requires increasing the checksum, so the checksum digits **must** be encoded last and verified | `wots.py` implements the checksum with `_get_checksum_digits` and verifies it in `verify` |
+| **MSS** | **State management.** If the signer ever loses track of which leaves were used and reuses one, the underlying OTS reuse vulnerability re-emerges | `MerkleSignature.sign` increments `next_leaf` and raises on exhaustion; see `tests/test_merkle.py::test_exhaustion_raises` |
+
+### 3. Parameter choices (grounded in Week 3 numbers)
+
+The Week 3 sweeps give us concrete numbers to recommend parameters:
+
+- **Tree height `h`.** KeyGen scales as `2^h` (dominant cost), but signature size grows by only `32·h` bytes. The sweet spot for "small embedded device that signs occasionally" is `h ≈ 10` (~1024 signatures, KeyGen still well under a second). For a server that needs millions of signatures, real-world standards push `h` up to 20+ via **hypertree** layering — which is exactly the trick SPHINCS+ uses to keep KeyGen practical.
+- **Winternitz `w`.** Week 3 showed a smooth size-vs-speed trade: `w=4` is fastest but largest; `w=256` is smallest but ~6× slower per sign/verify. **`w=16` is the standard choice** in real deployments (XMSS, SPHINCS+) and the data here confirms it lives near the knee of the curve.
+- **Hash output length.** SHA-256 → 128-bit quantum security is sufficient for category-1 use. For higher security categories, swap in SHA-512 or SHA-3 with no algorithmic change to the constructions.
+
+### 4. The state-management problem (and why SPHINCS+ exists)
+
+The biggest practical weakness of MSS is that it is **stateful** — the signer must reliably remember which leaves it has used. Real-world failure modes include:
+- a backed-up VM image being restored (state rolls back, leaves get reused),
+- multi-server deployments where state is not synchronized,
+- a power loss between updating `next_leaf` and persisting the new state.
+
+Each of those leads back to the key-reuse attack quantified in the previous section. **Stateless** hash-based signatures (SPHINCS+ / SLH-DSA) solve this by using a pseudorandom function to derive a leaf index from the message itself, plus a few-time signature (FORS) at the bottom layer to absorb the rare collisions. Implementing the full SPHINCS+ construction was the alternative Week 4 extension; choosing the security-analysis path here lets us *explain why it matters* using numbers from our own benchmarks, rather than adding ~500 lines of cryptographic code that would not have changed any of the Week 1–3 conclusions.
+
 ## Contributors
-- **Salwa Laicha** ([@slaicha](https://github.com/slaicha)) — Week 1 (Lamport OTS, WOTS, key-reuse attack demonstration)
-- **Abdullah** ([@abdullah-s-94](https://github.com/abdullah-s-94)) — Week 2 (Merkle Signature Scheme, authentication paths, benchmarks and plots)
+- **Salwa Laicha** ([@slaicha](https://github.com/slaicha)) — Week 1 (Lamport OTS, WOTS, key-reuse attack demonstration), Week 3 (performance evaluation and parameter tuning)
+- **Abdullah** ([@abdullah-s-94](https://github.com/abdullah-s-94)) — Week 2 (Merkle Signature Scheme, authentication paths, benchmarks and plots), Week 4 (security analysis and quantitative key-reuse extension)
