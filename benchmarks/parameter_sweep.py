@@ -1,8 +1,8 @@
 """
-Week 3 benchmarks — Performance Evaluation & Parameter Tuning.
+Parameter Sweep — Performance Evaluation & Parameter Tuning.
 
 Runs three systematic sweeps and saves the raw numbers to a JSON file
-that plot_week3.py turns into publication-quality figures.
+that plot_benchmarks.py turns into publication-quality figures.
 
 Sweeps
 ------
@@ -14,7 +14,7 @@ Sweeps
    → shows how w affects the full Merkle scheme.
 
 Run with:
-    python benchmarks/week3_analysis.py
+    python benchmarks/parameter_sweep.py
 """
 
 import json
@@ -35,7 +35,7 @@ RUNS = 5                      # repetitions per configuration (median is taken)
 MESSAGE = "Post-quantum cryptography is exciting!"
 
 OUT_DIR = os.path.dirname(os.path.abspath(__file__))
-JSON_PATH = os.path.join(OUT_DIR, "week3_results.json")
+JSON_PATH = os.path.join(OUT_DIR, "benchmark_results.json")
 
 
 def _median(values):
@@ -189,7 +189,7 @@ def sweep_mss_w(fixed_h=4):
 # ---------------------------------------------------------------------------
 def main():
     print("=" * 60)
-    print("Week 3 — Comprehensive Performance Evaluation")
+    print("Comprehensive Performance Evaluation")
     print("=" * 60)
 
     print("\n[1/3] OTS primitive sweep ...")

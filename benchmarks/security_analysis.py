@@ -1,12 +1,12 @@
 """
-Week 4 — Security Analysis (and Mandatory Extension support).
+Security Analysis — Lamport Key-Reuse Attack.
 
-This script extends the Week-1 Lamport key-reuse demo into a quantitative
+This script extends the Lamport key-reuse demo into a quantitative
 study, and produces three artifacts:
 
-    benchmarks/week4_recovery_rate.png   - empirical forgery probability vs k
-    benchmarks/week4_bits_recovered.png  - fraction of secret bits revealed vs k
-    benchmarks/week4_security_results.json - raw numbers for the README
+    benchmarks/forgery_probability.png   - empirical forgery probability vs k
+    benchmarks/key_exposure.png          - fraction of secret bits revealed vs k
+    benchmarks/security_results.json     - raw numbers for the report
 
 Theory recap
 ------------
@@ -190,7 +190,7 @@ def main():
     # Step 0: explicit secret-material recovery for the mandatory extension.
     recover_secret_material(
         reuses=20,
-        dump_path=os.path.join(out_dir, "week4_recovered_secret_key.json"),
+        dump_path=os.path.join(out_dir, "recovered_secret_key.json"),
     )
 
     empirical_rate = []
@@ -227,7 +227,7 @@ def main():
         "theoretical_forgery_rate": theoretical_rate,
         "fraction_blocks_revealed": avg_bits_revealed_frac,
     }
-    json_path = os.path.join(out_dir, "week4_security_results.json")
+    json_path = os.path.join(out_dir, "security_results.json")
     with open(json_path, "w") as f:
         json.dump(results, f, indent=2)
 
@@ -242,7 +242,7 @@ def main():
     plt.grid(True, alpha=0.3)
     plt.legend()
     plt.tight_layout()
-    plt.savefig(os.path.join(out_dir, "week4_recovery_rate.png"), dpi=120)
+    plt.savefig(os.path.join(out_dir, "forgery_probability.png"), dpi=120)
     plt.close()
 
     # Plot 2: how much of the secret material the attacker has collected
@@ -253,12 +253,12 @@ def main():
     plt.title("Each reuse leaks more of the 512-block Lamport secret key")
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
-    plt.savefig(os.path.join(out_dir, "week4_bits_recovered.png"), dpi=120)
+    plt.savefig(os.path.join(out_dir, "key_exposure.png"), dpi=120)
     plt.close()
 
     print("\nWrote:")
-    print(" -", os.path.join(out_dir, "week4_recovery_rate.png"))
-    print(" -", os.path.join(out_dir, "week4_bits_recovered.png"))
+    print(" -", os.path.join(out_dir, "forgery_probability.png"))
+    print(" -", os.path.join(out_dir, "key_exposure.png"))
     print(" -", json_path)
 
 

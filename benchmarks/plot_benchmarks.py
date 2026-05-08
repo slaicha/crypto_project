@@ -1,7 +1,7 @@
 """
-Week 3 plots — publication-quality figures for the performance evaluation.
+Benchmark plots — publication-quality figures for the performance evaluation.
 
-Reads the JSON produced by week3_analysis.py and generates six plots:
+Reads the JSON produced by parameter_sweep.py and generates six plots:
   1. OTS signature size vs w
   2. OTS sign + verify time vs w
   3. MSS keygen time vs tree height
@@ -10,7 +10,7 @@ Reads the JSON produced by week3_analysis.py and generates six plots:
   6. MSS trade-off at fixed h (sig size vs computation, varying w)
 
 Run with:
-    python benchmarks/plot_week3.py
+    python benchmarks/plot_benchmarks.py
 """
 
 import json
@@ -25,11 +25,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 OUT_DIR = os.path.dirname(os.path.abspath(__file__))
-JSON_PATH = os.path.join(OUT_DIR, "week3_results.json")
+JSON_PATH = os.path.join(OUT_DIR, "benchmark_results.json")
 
 # ---- Styling ----
 plt.rcParams.update({
-    "figure.facecolor": "#f8f9fa",
+    "figure.facecolor": "#ffffff",
     "axes.facecolor":   "#ffffff",
     "axes.edgecolor":   "#cccccc",
     "axes.grid":        True,
@@ -79,7 +79,7 @@ def plot_ots_sig_size(data):
         ax.text(i, v + 200, f"{v:,}", ha="center", va="bottom", fontsize=9)
 
     fig.tight_layout()
-    path = os.path.join(OUT_DIR, "week3_ots_sig_size.png")
+    path = os.path.join(OUT_DIR, "ots_sig_size.png")
     fig.savefig(path)
     plt.close(fig)
     print(f"  → {path}")
@@ -113,7 +113,7 @@ def plot_ots_times(data):
     ax.set_title("OTS Computation Cost — larger w means more hash chains")
     ax.legend(fontsize=9, ncol=2)
     fig.tight_layout()
-    path = os.path.join(OUT_DIR, "week3_ots_times.png")
+    path = os.path.join(OUT_DIR, "ots_times.png")
     fig.savefig(path)
     plt.close(fig)
     print(f"  → {path}")
@@ -138,45 +138,56 @@ def plot_mss_keygen(data):
     ax.set_title("MSS KeyGen — exponential in tree height")
     ax.legend()
     fig.tight_layout()
-    path = os.path.join(OUT_DIR, "week3_mss_keygen.png")
+    path = os.path.join(OUT_DIR, "mss_keygen.png")
     fig.savefig(path)
     plt.close(fig)
     print(f"  → {path}")
 
 
 # ======================================================================== #
-# Plot 4 — MSS: Sign & Verify time vs tree height
+# Plot 4a — MSS: Sign time vs tree height
 # ======================================================================== #
-def plot_mss_sign_verify(data):
+def plot_mss_sign(data):
     mss = data["mss_height_sweep"]
     lam = [r for r in mss if r["scheme"] == "lamport"]
     wot = [r for r in mss if r["scheme"] == "wots"]
 
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4.5), sharey=True)
-
-    # Sign
-    ax1.plot([r["height"] for r in lam], [r["sign_ms"] for r in lam],
-             "o-", color=LAMPORT_COLOR, lw=2, label="Lamport")
-    ax1.plot([r["height"] for r in wot], [r["sign_ms"] for r in wot],
-             "s-", color=WOTS_COLOR, lw=2, label="WOTS (w=16)")
-    ax1.set_xlabel("Tree height h")
-    ax1.set_ylabel("Time (ms)")
-    ax1.set_title("Sign time vs height")
-    ax1.legend()
-
-    # Verify
-    ax2.plot([r["height"] for r in lam], [r["verify_ms"] for r in lam],
-             "o-", color=LAMPORT_COLOR, lw=2, label="Lamport")
-    ax2.plot([r["height"] for r in wot], [r["verify_ms"] for r in wot],
-             "s-", color=WOTS_COLOR, lw=2, label="WOTS (w=16)")
-    ax2.set_xlabel("Tree height h")
-    ax2.set_title("Verify time vs height")
-    ax2.legend()
-
-    fig.suptitle("MSS Sign & Verify — nearly constant in h", fontsize=13, y=1.02)
+    fig, ax = plt.subplots(figsize=(7.5, 4.5))
+    ax.plot([r["height"] for r in lam], [r["sign_ms"] for r in lam],
+            "o-", color=LAMPORT_COLOR, lw=2, ms=7, label="Lamport leaves")
+    ax.plot([r["height"] for r in wot], [r["sign_ms"] for r in wot],
+            "s-", color=WOTS_COLOR, lw=2, ms=7, label="WOTS (w=16) leaves")
+    ax.set_xlabel("Tree height h  (signs up to 2^h messages)")
+    ax.set_ylabel("Sign time (ms)")
+    ax.set_title("MSS Sign Time — nearly constant in tree height")
+    ax.legend()
     fig.tight_layout()
-    path = os.path.join(OUT_DIR, "week3_mss_sign_verify.png")
-    fig.savefig(path, bbox_inches="tight")
+    path = os.path.join(OUT_DIR, "mss_sign.png")
+    fig.savefig(path)
+    plt.close(fig)
+    print(f"  → {path}")
+
+
+# ======================================================================== #
+# Plot 4b — MSS: Verify time vs tree height
+# ======================================================================== #
+def plot_mss_verify(data):
+    mss = data["mss_height_sweep"]
+    lam = [r for r in mss if r["scheme"] == "lamport"]
+    wot = [r for r in mss if r["scheme"] == "wots"]
+
+    fig, ax = plt.subplots(figsize=(7.5, 4.5))
+    ax.plot([r["height"] for r in lam], [r["verify_ms"] for r in lam],
+            "o-", color=LAMPORT_COLOR, lw=2, ms=7, label="Lamport leaves")
+    ax.plot([r["height"] for r in wot], [r["verify_ms"] for r in wot],
+            "s-", color=WOTS_COLOR, lw=2, ms=7, label="WOTS (w=16) leaves")
+    ax.set_xlabel("Tree height h  (signs up to 2^h messages)")
+    ax.set_ylabel("Verify time (ms)")
+    ax.set_title("MSS Verify Time — nearly constant in tree height")
+    ax.legend()
+    fig.tight_layout()
+    path = os.path.join(OUT_DIR, "mss_verify.png")
+    fig.savefig(path)
     plt.close(fig)
     print(f"  → {path}")
 
@@ -199,7 +210,7 @@ def plot_mss_sig_size(data):
     ax.set_title("MSS Signature Size — grows by 32 B per level")
     ax.legend()
     fig.tight_layout()
-    path = os.path.join(OUT_DIR, "week3_mss_sig_size.png")
+    path = os.path.join(OUT_DIR, "mss_sig_size.png")
     fig.savefig(path)
     plt.close(fig)
     print(f"  → {path}")
@@ -236,7 +247,7 @@ def plot_mss_w_tradeoff(data):
     ax1.legend(handles, labels, loc="center right")
 
     fig.tight_layout()
-    path = os.path.join(OUT_DIR, "week3_mss_w_tradeoff.png")
+    path = os.path.join(OUT_DIR, "mss_w_tradeoff.png")
     fig.savefig(path)
     plt.close(fig)
     print(f"  → {path}")
@@ -245,11 +256,12 @@ def plot_mss_w_tradeoff(data):
 # ======================================================================== #
 def main():
     data = load()
-    print("Generating Week 3 plots ...")
+    print("Generating benchmark plots ...")
     plot_ots_sig_size(data)
     plot_ots_times(data)
     plot_mss_keygen(data)
-    plot_mss_sign_verify(data)
+    plot_mss_sign(data)
+    plot_mss_verify(data)
     plot_mss_sig_size(data)
     plot_mss_w_tradeoff(data)
     print("Done.")
