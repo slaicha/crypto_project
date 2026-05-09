@@ -83,7 +83,8 @@ class WOTS:
         checksum = 0
         for d in message_digits:
             checksum += (self.w - 1 - d)
-            
+
+        # base conversion from decimal to base w    
         # Encode the checksum integer as l2 base-w digits
         checksum_digits = []
         for _ in range(self.l2):

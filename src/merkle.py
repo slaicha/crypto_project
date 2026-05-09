@@ -42,7 +42,7 @@ def _serialize_ots_public_key(ots_pk):
     We concatenate all the bytes in order. The exact layout does not matter for
     security as long as the signer and verifier agree on it.
     """
-    buf = b""
+    buf = b"" #initialize an empty byte string to store the serialized public key
     for item in ots_pk:
         if isinstance(item, tuple):           # Lamport: (pk_0, pk_1)
             buf += item[0] + item[1]
