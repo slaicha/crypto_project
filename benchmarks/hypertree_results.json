@@ -1,0 +1,38 @@
+[
+  {
+    "scheme": "Flat MSS (h=8)",
+    "capacity": 256,
+    "keygen_ms": 111.12499237060547,
+    "sign_ms": 0.19598007202148438,
+    "verify_ms": 0.22602081298828125,
+    "sig_bytes": 4548,
+    "verified": true
+  },
+  {
+    "scheme": "Hypertree (h_top=4, h_bot=4)",
+    "capacity": 256,
+    "keygen_ms": 13.46898078918457,
+    "sign_ms": 0.1728534698486328,
+    "verify_ms": 0.6031990051269531,
+    "sig_bytes": 8876,
+    "verified": true
+  },
+  {
+    "scheme": "Flat MSS (h=10)",
+    "capacity": 1024,
+    "keygen_ms": 443.71914863586426,
+    "sign_ms": 0.20194053649902344,
+    "verify_ms": 0.23508071899414062,
+    "sig_bytes": 4612,
+    "verified": true
+  },
+  {
+    "scheme": "Hypertree (h_top=5, h_bot=5)",
+    "capacity": 1024,
+    "keygen_ms": 28.44691276550293,
+    "sign_ms": 0.19097328186035156,
+    "verify_ms": 0.43201446533203125,
+    "sig_bytes": 8940,
+    "verified": true
+  }
+]

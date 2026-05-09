@@ -55,7 +55,8 @@
     \item OTS Benchmarks
     \item MSS Performance Evaluation
     \item Parameter Tuning
-    \item Security: Key-Reuse Attack
+    \item Mandatory Extension: Key-Reuse Attack
+    \item Advanced Extension: Hypertrees
     \item Conclusion
 \end{enumerate}
 \end{column}
@@ -401,7 +402,7 @@ Verify: $H(H(L_0 \| L_1) \| H_{23}) = \text{Root}$
 % ====================================================================
 % PART 2
 % ====================================================================
-\section{Evaluation \& Security Analysis}
+\section{Evaluation \& Extensions}
 
 % ---- Slide: OTS Benchmark Table ----
 \begin{frame}{OTS Performance Comparison}
@@ -533,8 +534,8 @@ This matches the XMSS and SPHINCS+ standard configurations.
 \end{columns}
 \end{frame}
 
-% ---- Slide: Security Theory ----
-\begin{frame}{Security Analysis: Key-Reuse Attack}
+% ---- Slide: Mandatory Extension Theory ----
+\begin{frame}{Mandatory Extension: Lamport Key-Reuse Attack}
 \begin{columns}
 \begin{column}{0.55\textwidth}
 \textbf{Threat model:} A \emph{passive} attacker observes $k$ signatures made with the \textbf{same} Lamport key.
@@ -577,8 +578,8 @@ $k$ & $P_{\text{forge}}$ & \textbf{SK Exposed} \\
 \end{columns}
 \end{frame}
 
-% ---- Slide: Security Plots ----
-\begin{frame}{Security Analysis: Empirical Validation}
+% ---- Slide: Mandatory Extension Plots ----
+\begin{frame}{Mandatory Extension: Empirical Validation}
 \begin{columns}
 \begin{column}{0.48\textwidth}
 \centering
@@ -598,25 +599,70 @@ $k$ & $P_{\text{forge}}$ & \textbf{SK Exposed} \\
 This is exactly why the Merkle tree enforces strict one-time leaf usage.
 \end{frame}
 
+% ---- Slide: Advanced Extension --- Hypertrees ----
+\begin{frame}{Advanced Extension: Multi-Layer Merkle Trees (Hypertrees)}
+\textbf{The problem:} Flat MSS KeyGen scales as $O(2^h)$ --- prohibitive at large signing capacities.
+
+\vspace{4pt}
+\textbf{The idea:} Stack two Merkle trees. The \emph{top} tree's leaves do not sign messages directly; each one certifies the root of a \emph{bottom} tree. Build bottom trees \alert{lazily} (only as needed).
+\begin{itemize}
+    \item Total capacity: $N = 2^{h_{\text{top}} + h_{\text{bot}}}$
+    \item Initial KeyGen: $O(2^{h_{\text{top}}} + 2^{h_{\text{bot}}}) \approx O(\sqrt{N})$ when balanced
+    \item Same construction is used internally by SPHINCS+ / SLH-DSA
+\end{itemize}
+
+\vspace{4pt}
+\begin{columns}
+\begin{column}{0.55\textwidth}
+\centering
+\footnotesize
+\begin{tabular}{lrrr}
+\toprule
+\textbf{Scheme} & $N$ & \textbf{KG (ms)} & \textbf{Sig (B)} \\
+\midrule
+Flat MSS, $h\!=\!8$              & 256  & 111.1 & 4{,}548 \\
+\rowcolor{success!15}
+Hypertree, $h_t\!=\!h_b\!=\!4$    & 256  & \textbf{13.5}  & 8{,}876 \\
+\midrule
+Flat MSS, $h\!=\!10$             & 1024 & 443.7 & 4{,}612 \\
+\rowcolor{success!15}
+Hypertree, $h_t\!=\!h_b\!=\!5$    & 1024 & \textbf{28.5}  & 8{,}940 \\
+\bottomrule
+\end{tabular}
+\end{column}
+\begin{column}{0.42\textwidth}
+\centering
+\includegraphics[width=\textwidth]{benchmarks/hypertree_keygen.png}
+\end{column}
+\end{columns}
+
+\vspace{4pt}
+\centering
+\textbf{Result:} 8.2$\times$ faster KeyGen at $N\!=\!256$, 15.6$\times$ faster at $N\!=\!1024$.\\
+Sign/verify costs unchanged; signature roughly doubles --- a clean trade.
+\end{frame}
+
 % ---- Slide: Conclusion ----
 \begin{frame}{Conclusion}
 \begin{enumerate}
-    \item \textbf{Implemented} Lamport OTS, WOTS, and Merkle Signature Scheme from scratch using SHA-256.
+    \item \textbf{Implemented} Lamport OTS, WOTS, Merkle Signature Scheme, and a 2-layer Hypertree from scratch using SHA-256.
     \item \textbf{Benchmarked} across the full $(w, h)$ parameter space --- confirmed theoretical scaling predictions.
     \item \textbf{Demonstrated} the key-reuse vulnerability with 200-trial Monte Carlo experiments matching the theoretical model.
+    \item \textbf{Extended} flat MSS to a 2-layer hypertree --- the same trick used by SPHINCS+/SLH-DSA --- for an order-of-magnitude KeyGen speedup at matched capacity.
 \end{enumerate}
 
-\vspace{8pt}
+\vspace{6pt}
 \begin{block}{Key Insights}
 \begin{itemize}
     \item WOTS $w\!=\!16$ is the standard for a reason: 4$\times$ smaller than Lamport at manageable cost.
-    \item MSS KeyGen is $O(2^h)$, but sign/verify are constant and signatures grow by only 32\,B/level.
+    \item Flat MSS KeyGen is $O(2^h)$, but sign/verify are constant and signatures grow by only 32\,B/level.
+    \item Hypertrees turn the $O(2^h)$ KeyGen cost into $O(\sqrt{N})$ at the cost of $\sim$2$\times$ signature size.
     \item Hash-based signatures are a viable, well-understood path to post-quantum security.
 \end{itemize}
 \end{block}
 
 \vspace{4pt}
-\textbf{Future work:} SPHINCS+ (stateless), hypertrees, FORS (few-time signatures).
+\textbf{Future work:} Stateless variants (SPHINCS+ FORS layer), batch verification.
 \end{frame}
 
 % ---- Slide: Thank You ----

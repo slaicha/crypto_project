@@ -31,7 +31,7 @@
 % ══════════════════════════════════════════════════════════════
 \begin{abstract}
 \noindent
-We design, implement, and evaluate a complete hash-based digital signature system in Python. Starting from the foundational Lamport One-Time Signature (OTS) scheme, we progress through Winternitz OTS (WOTS) and culminate in a full Merkle Signature Scheme (MSS) that lifts the one-time restriction. We conduct systematic benchmarks across a wide parameter space---varying the Winternitz parameter $w \in \{4,\dots,256\}$ and tree heights $h \in \{1,\dots,8\}$---to quantify the signature-size versus computation-time trade-off. Finally, we demonstrate the critical key-reuse vulnerability of Lamport signatures through a quantitative attack simulation, recovering the full 512-block secret key after only 20 reuses and validating the theoretical forgery probability $(1-2^{-k})^{256}$ against empirical data across 200 independent trials per configuration.
+We design, implement, and evaluate a complete hash-based digital signature system in Python. Starting from the foundational Lamport One-Time Signature (OTS) scheme, we progress through Winternitz OTS (WOTS) and culminate in a full Merkle Signature Scheme (MSS) that lifts the one-time restriction. We conduct systematic benchmarks across a wide parameter space---varying the Winternitz parameter $w \in \{4,\dots,256\}$ and tree heights $h \in \{1,\dots,8\}$---to quantify the signature-size versus computation-time trade-off. We demonstrate the critical key-reuse vulnerability of Lamport signatures through a quantitative attack simulation, recovering the full 512-block secret key after only 20 reuses and validating the theoretical forgery probability $(1-2^{-k})^{256}$ against empirical data across 200 independent trials per configuration. Finally, we extend the construction to a two-layer \emph{hypertree}, the same multi-layer Merkle aggregation idea used internally by SPHINCS+/SLH-DSA, and show that it reduces initial KeyGen time by an order of magnitude at matched signing capacity (e.g., 8$\times$ faster at $N\!=\!256$ and 16$\times$ faster at $N\!=\!1024$).
 \end{abstract}
 
 % ══════════════════════════════════════════════════════════════
@@ -56,7 +56,7 @@ WOTS generalizes Lamport by processing the message hash in base-$w$ digits rathe
 OTS schemes are inherently single-use. The Merkle tree construction~\cite{merkle1989} overcomes this by generating $N = 2^h$ independent OTS keypairs, hashing each OTS public key into a leaf node, and building a binary hash tree whose root serves as the long-term public key. A signature for the $i$-th message includes: (a) the OTS signature, (b) the OTS public key, and (c) an \emph{authentication path}---the $h$ sibling hashes along the path from leaf $i$ to the root. The verifier checks the OTS signature and reconstructs the root from the leaf using the authentication path, accepting if and only if the reconstructed root matches the published public key. A \texttt{next\_leaf} counter enforces strict one-time usage of each leaf, raising an error upon exhaustion.
 
 % ══════════════════════════════════════════════════════════════
-\section{Experimental Results}
+\section{Experimental Results}\label{sec:experiments}
 
 All benchmarks were collected on a local Linux workstation using SHA-256. Timing measurements are medians over 5 independent runs.
 
@@ -207,9 +207,9 @@ Max msgs    & $w\!=\!16, h\!=\!8$ & 4548\,B  & 0.61\,ms & 256 \\
 \end{table}
 
 % ══════════════════════════════════════════════════════════════
-\section{Security Analysis}
+\section{Mandatory Extension: Lamport Key-Reuse Attack}
 
-\subsection{Lamport Key-Reuse Attack}
+\subsection{Threat Model and Theoretical Analysis}
 
 A Lamport secret key comprises $256 \times 2 = 512$ blocks. Each signature reveals exactly 256 blocks (one per row, selected by the corresponding message-hash bit). After $k$ reuses with independent random messages, the probability that a \emph{specific} block remains unrevealed is $(1/2)^k$. To forge a signature on an arbitrary target, the attacker needs all 256 blocks selected by the target's hash. The forgery probability is:
 \begin{equation}
@@ -259,22 +259,60 @@ Figure~\ref{fig:bits} provides a complementary view: it plots the average fracti
 \subsection{Full Secret Key Recovery}
 We explicitly demonstrated secret-key recovery by signing 20 random messages with the same Lamport key. All 512 blocks were recovered byte-exact, as verified against the original key. The full recovered key was exported to JSON for inspection. Once in possession of the complete secret key, the attacker can forge a valid signature on \emph{any} message.
 
-\subsection{Mitigation and Post-Quantum Security}
+% ══════════════════════════════════════════════════════════════
+\section{Advanced Extension: Multi-Layer Merkle Trees (Hypertrees)}
+\label{sec:hypertree}
 
-The key-reuse vulnerability is exactly why Lamport and WOTS are called \emph{one-time} signatures and why Merkle aggregation is mandatory for practical use. Our MSS implementation enforces one-time leaf usage via a \texttt{next\_leaf} counter that raises an error upon exhaustion. WOTS carries the same reuse risk, compounded by the checksum: forging a signature with smaller digits would require increasing the checksum digits, which requires additional hash iterations the attacker cannot compute without the secret key.
+Section~\ref{sec:experiments} (and Figure~\ref{fig:mss_keygen} in particular) exposed the dominant practical limitation of a flat MSS: KeyGen scales as $O(2^h)$, which becomes prohibitive once we want signing capacities of $2^{16}$ or beyond. We address this by implementing a two-layer \emph{hypertree}, the same multi-layer Merkle construction used internally by SPHINCS+/SLH-DSA.
 
-All constructions in this project derive their security solely from the preimage resistance of SHA-256. Grover's algorithm reduces the effective security from 256 bits (classical) to $\sim$128 bits (quantum), meeting NIST's Category-1 requirement. These building blocks---Lamport, WOTS, Merkle trees---are precisely the components used internally by SPHINCS+ (standardized as SLH-DSA), which adds hypertree layering to keep KeyGen practical at large heights.
+\subsection{Construction}
+A two-layer hypertree consists of one \emph{top tree} of height $h_{\text{top}}$ whose leaves do not sign user messages directly; instead, each top-tree leaf certifies the public-key root of a \emph{bottom tree} of height $h_{\text{bot}}$. Messages are signed by a leaf of the appropriate bottom tree, and the resulting signature is bundled with the top tree's MSS signature on that bottom tree's root. The total signing capacity is $N = 2^{h_{\text{top}} + h_{\text{bot}}}$, and the published public key is the top-tree root---a single 32-byte hash that commits to all $N$ signing slots.
+
+The decisive property is that bottom trees are built \emph{lazily}: only the top tree and the first bottom tree are materialized at KeyGen time. This turns the up-front cost from $O(2^h)$ into roughly $O(2 \cdot 2^{h/2})$ when $h_{\text{top}} \approx h_{\text{bot}}$---a square-root reduction. Verification is unchanged in structure: the verifier checks both the bottom-tree MSS signature on the message and the top-tree MSS signature on the bottom-root, and ensures the bottom-tree index is consistent across the two.
+
+\subsection{Implementation and Tests}
+The construction lives in \texttt{src/hypertree.py} and is layered directly on top of our existing \texttt{MerkleSignature} class, requiring no modification to the underlying primitives. The \texttt{Hypertree} class exposes the standard \texttt{generate\_keypair}, \texttt{sign}, and \texttt{verify} interface. Five unit tests in \texttt{tests/test\_hypertree.py} confirm correctness, capacity exhaustion, and rejection of tampered messages and mismatched public keys; all five pass.
+
+\subsection{Empirical Results}
+Table~\ref{tab:hypertree} compares the two-layer hypertree against a flat MSS at matched signing capacities. WOTS ($w\!=\!16$) leaves are used throughout. Figure~\ref{fig:hypertree} visualizes the KeyGen comparison.
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{lrcccc}
+\toprule
+\textbf{Scheme} & $N$ & \textbf{KG (ms)} & \textbf{Sign (ms)} & \textbf{Vrfy (ms)} & \textbf{Sig (B)} \\
+\midrule
+Flat MSS, $h\!=\!8$           & 256  & 111.1 & 0.20 & 0.23 & 4548 \\
+Hypertree, $h_t\!=\!h_b\!=\!4$ & 256  & 13.5  & 0.17 & 0.60 & 8876 \\
+\midrule
+Flat MSS, $h\!=\!10$          & 1024 & 443.7 & 0.20 & 0.24 & 4612 \\
+Hypertree, $h_t\!=\!h_b\!=\!5$ & 1024 & 28.5  & 0.19 & 0.43 & 8940 \\
+\bottomrule
+\end{tabular}
+\caption{Hypertree vs flat MSS at matched signing capacities. KG = initial KeyGen time.}
+\label{tab:hypertree}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\linewidth]{benchmarks/hypertree_keygen.png}
+\caption{Initial KeyGen time: flat MSS vs 2-layer hypertree at matched signing capacities. The hypertree is 8.2$\times$ faster at $N\!=\!256$ and 15.6$\times$ faster at $N\!=\!1024$, confirming the predicted $O(\sqrt{N})$ behavior.}
+\label{fig:hypertree}
+\end{figure}
+
+The data confirms three predictions. First, KeyGen time drops by roughly the expected $\sqrt{N}$ factor (8.2$\times$ at $N\!=\!256$, 15.6$\times$ at $N\!=\!1024$). Second, single-message Sign time is essentially unchanged, because signing still costs one bottom-tree MSS sign plus a precomputed top-tree certificate. Third, signature size roughly doubles ($\sim$4.5\,KB to $\sim$8.9\,KB), since each hypertree signature now carries two MSS signatures instead of one---the standard size-vs-cost trade-off of multi-layer Merkle constructions. This is precisely the engineering trick that lets SPHINCS+ scale to $N\!=\!2^{64}$ while keeping initial KeyGen practical.
 
 % ══════════════════════════════════════════════════════════════
 \section{Conclusion}
 
-We implemented a complete hash-based signature pipeline from Lamport OTS through WOTS to the Merkle Signature Scheme, accompanied by comprehensive benchmarks and a quantitative security analysis. Our key findings are:
+We implemented a complete hash-based signature pipeline from Lamport OTS through WOTS to the Merkle Signature Scheme, extended it to a two-layer hypertree, and supported all of it with comprehensive benchmarks and a quantitative key-reuse attack. Our key findings are:
 
 \begin{itemize}
     \item WOTS with $w\!=\!16$ offers the best practical balance: 3.8$\times$ smaller signatures than Lamport with sign+verify under 0.6\,ms.
-    \item MSS KeyGen scales as $O(2^h)$, while signing, verification, and signature size are nearly independent of tree height.
-    \item Lamport key reuse is catastrophic: after $\sim$10 reuses, forgery succeeds with $>$78\% probability; after 15 reuses, it is essentially certain.
-    \item The Merkle tree construction, combined with stateful leaf tracking, fully mitigates the one-time limitation of the underlying OTS primitives.
+    \item Flat MSS KeyGen scales as $O(2^h)$, while signing, verification, and signature size are nearly independent of tree height.
+    \item Lamport key reuse is catastrophic: after $\sim$10 reuses, forgery succeeds with $>$78\% probability; after 15 reuses, it is essentially certain. We recovered the full 512-block secret key byte-for-byte after only 20 reuses.
+    \item The two-layer hypertree (Section~\ref{sec:hypertree}) reduces initial KeyGen time by 8--16$\times$ at matched signing capacity, at the cost of roughly doubling the signature size---the same engineering trick used by SPHINCS+/SLH-DSA.
 \end{itemize}
 
 These results confirm that hash-based signatures are a viable and well-understood path to post-quantum security, requiring only the mild assumption of hash function one-wayness.
