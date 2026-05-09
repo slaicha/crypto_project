@@ -26,6 +26,11 @@ Thumbs.db
 *.lot
 *.bbl
 *.blg
+*.nav
+*.snm
+*.synctex
+*.synctex(busy)
+
 
 # pytest
 .pytest_cache/

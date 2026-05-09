@@ -1,0 +1,633 @@
+\documentclass[aspectratio=169, 10pt]{beamer}
+
+% ---------- Theme ----------
+\usetheme{metropolis}
+\usepackage{appendixnumberbeamer}
+
+% ---------- Packages ----------
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{amsmath,amssymb}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta, positioning, calc}
+\usepackage{xcolor}
+
+% ---------- Colors ----------
+\definecolor{accent}{HTML}{2E86AB}
+\definecolor{danger}{HTML}{D7263D}
+\definecolor{success}{HTML}{2A9D8F}
+\definecolor{warn}{HTML}{E9C46A}
+\setbeamercolor{frametitle}{bg=accent!95!black, fg=white}
+\setbeamercolor{progress bar}{fg=accent}
+\setbeamercolor{alerted text}{fg=danger}
+
+% ---------- Metadata ----------
+\title{Hash-Based Digital Signatures}
+\subtitle{Lamport OTS \(\to\) WOTS \(\to\) Merkle Signature Scheme}
+\author{Aicha Slaitane \and Abdullah Algethami}
+\institute{Applied Cryptography (CS 232) --- KAUST}
+\date{}
+
+\begin{document}
+
+% ====================================================================
+% TITLE
+% ====================================================================
+\maketitle
+
+% ====================================================================
+% OUTLINE
+% ====================================================================
+\begin{frame}{Outline}
+\begin{columns}[t]
+\begin{column}{0.48\textwidth}
+\begin{enumerate}
+    \item Motivation: The Quantum Threat
+    \item Lamport One-Time Signatures
+    \item Winternitz OTS (WOTS)
+    \item Merkle Signature Scheme
+\end{enumerate}
+\end{column}
+\begin{column}{0.48\textwidth}
+\begin{enumerate}\setcounter{enumi}{4}
+    \item OTS Benchmarks
+    \item MSS Performance Evaluation
+    \item Parameter Tuning
+    \item Security: Key-Reuse Attack
+    \item Conclusion
+\end{enumerate}
+\end{column}
+\end{columns}
+\end{frame}
+
+% ====================================================================
+% PART 1 --- AICHA
+% ====================================================================
+\section{Theory \& Implementation}
+
+% ---- Slide: Motivation ----
+\begin{frame}{The Quantum Threat}
+\begin{columns}
+\begin{column}{0.55\textwidth}
+\begin{itemize}
+    \item \textbf{Shor's algorithm} (1994) breaks RSA, ECDSA, and Diffie--Hellman in polynomial time on a quantum computer.
+    \item These schemes rely on the hardness of \emph{factoring} or \emph{discrete logs}.
+    \item \alert{We need signatures based on different assumptions.}
+\end{itemize}
+\vspace{6pt}
+\textbf{Hash-based signatures} rely \emph{only} on the one-wayness of hash functions (e.g.\ SHA-256).
+\begin{itemize}
+    \item No number-theoretic assumptions.
+    \item Grover's algorithm gives only a \(\sqrt{}\) speedup \(\Rightarrow\) SHA-256 still provides \(\sim\)128-bit quantum security.
+\end{itemize}
+\end{column}
+\begin{column}{0.42\textwidth}
+\centering
+\begin{tikzpicture}[
+    box/.style={draw, rounded corners, minimum width=3.2cm, minimum height=0.8cm, align=center, font=\footnotesize},
+    >=Stealth
+]
+\node[box, fill=danger!15] (rsa) at (0,2.4) {RSA / ECDSA};
+\node[box, fill=danger!15] (dh) at (0,1.2) {Diffie--Hellman};
+\node[box, fill=success!20, line width=1pt] (hbs) at (0,0) {Hash-Based Sigs};
+\node[font=\footnotesize\bfseries, text=danger] at (2.6,1.8) {Broken};
+\node[font=\footnotesize\bfseries, text=success] at (2.6,0) {Safe};
+\draw[->, thick, danger] (2.0,1.8) -- (rsa.east);
+\draw[->, thick, danger] (2.0,1.8) -- (dh.east);
+\draw[->, thick, success] (2.0,0) -- (hbs.east);
+\end{tikzpicture}
+\end{column}
+\end{columns}
+\end{frame}
+
+% ---- Slide: Lamport Overview ----
+\begin{frame}{Lamport One-Time Signature}
+\textbf{Key Generation:} \textit{(Where $H$ is a cryptographic collision resistant hash function e.g. SHA-256)}
+\begin{columns}
+\begin{column}{0.52\textwidth}
+\vspace{4pt}
+
+\begin{itemize}
+    \item Generate 256 pairs of random 32-byte blocks.
+    \item Secret key: \(\text{SK}[i] = (s_i^0,\; s_i^1)\)
+    \item Public key: \(\text{PK}[i] = \bigl(H(s_i^0),\; H(s_i^1)\bigr)\)
+\end{itemize}
+\vspace{6pt}
+\textbf{Signing} message \(m\):
+\begin{enumerate}
+    \item Compute \(h = H(m)\) --- 256 bits.
+    \item For each bit \(h_i\), reveal \(s_i^{h_i}\).
+\end{enumerate}
+\vspace{6pt}
+\textbf{Verification:}\\
+Check \(H(\sigma_i) \stackrel{?}{=} \text{PK}[i][h_i]\) for all \(i\).
+\end{column}
+\begin{column}{0.45\textwidth}
+\centering
+\begin{tikzpicture}[
+    sk/.style={draw, fill=accent!12, minimum width=0.9cm, minimum height=0.55cm, font=\tiny},
+    pk/.style={draw, fill=success!12, minimum width=0.9cm, minimum height=0.55cm, font=\tiny},
+    >=Stealth
+]
+% Labels
+\node[font=\footnotesize\bfseries] at (-0.4,2.6) {SK};
+\node[font=\footnotesize\bfseries] at (-0.4,1.2) {PK};
+% SK row
+\node[sk] (s00) at (0.6,2.6) {$\scriptscriptstyle s_0^0$};
+\node[sk] (s01) at (1.6,2.6) {$\scriptscriptstyle s_0^1$};
+\node[sk] (s10) at (2.8,2.6) {$\scriptscriptstyle s_1^0$};
+\node[sk] (s11) at (3.8,2.6) {$\scriptscriptstyle s_1^1$};
+\node[font=\tiny] at (4.6,2.6) {$\cdots$};
+% PK row
+\node[pk] (p00) at (0.6,1.2) {$\scriptscriptstyle H(s_0^0)$};
+\node[pk] (p01) at (1.6,1.2) {$\scriptscriptstyle H(s_0^1)$};
+\node[pk] (p10) at (2.8,1.2) {$\scriptscriptstyle H(s_1^0)$};
+\node[pk] (p11) at (3.8,1.2) {$\scriptscriptstyle H(s_1^1)$};
+\node[font=\tiny] at (4.6,1.2) {$\cdots$};
+% Arrows
+\draw[->, thick] (s00) -- (p00);
+\draw[->, thick] (s01) -- (p01);
+\draw[->, thick] (s10) -- (p10);
+\draw[->, thick] (s11) -- (p11);
+% Highlight
+\node[font=\tiny, text=danger] at (2.2,0.4) {If $h_0\!=\!0$: reveal $s_0^0$};
+\end{tikzpicture}
+\end{column}
+\end{columns}
+
+\vspace{6pt}
+\begin{block}{Key Properties}
+Signature = 8,192\,B \quad|\quad Signing: 0.03\,ms (no hashing!) \quad|\quad \alert{Strictly one-time use}
+\end{block}
+\end{frame}
+
+% ---- Slide: Lamport Limitation ----
+\begin{frame}{Why Is Lamport One-Time?}
+\begin{itemize}
+    \item Each signature reveals \textbf{256 of 512} secret blocks.
+    \item A second signature on a different message reveals \emph{different} blocks.
+    \item After \(k\) reuses, an attacker has collected enough blocks to forge \emph{any} message.
+\end{itemize}
+
+\vspace{8pt}
+\begin{center}
+\begin{tabular}{ccc}
+\toprule
+\textbf{Reuses ($k$)} & \textbf{Blocks Exposed} & \textbf{Forgery Probability} \\
+\midrule
+1 & 50\% & $\approx 0\%$ \\
+8 & 99.6\% & 38.5\% \\
+10 & 99.9\% & 78\% \\
+15 & 100\% & $>$99.9\% \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\vspace{4pt}
+\centering
+\textbf{Two solutions:} \quad (1) Use WOTS to reduce sizes \quad (2) Use Merkle trees to manage many keys
+\end{frame}
+
+% ---- Slide: WOTS 1 ----
+\begin{frame}{Winternitz OTS: Hash Chains}
+\vspace{4pt}
+\textbf{Key Idea:} Group hash bits into base-\(w\) digits and use \emph{hash chains} instead of single hashes.
+
+\vspace{8pt}
+\textbf{What is a Hash Chain?}
+\begin{itemize}
+    \item A hash chain is formed by repeatedly applying a cryptographic hash function $H$ to a secret starting value.
+    \item Each step in the chain is one-way: you can compute forward easily, but computing backward requires inverting the hash.
+\end{itemize}
+
+\vspace{12pt}
+\centering
+\begin{tikzpicture}[
+    node distance=1.2cm,
+    hash/.style={draw, circle, minimum size=0.8cm, inner sep=0, font=\footnotesize},
+    >=Stealth
+]
+\node[hash, fill=accent!20] (sk) {SK};
+\node[hash, right=of sk] (h1) {$H^1$};
+\node[hash, right=of h1] (h2) {$H^2$};
+\node[hash, right=of h2] (hd) {$H^3$};
+\node[hash, right=of hd] (h4) {$\cdots$};
+\node[hash, right=of h4, fill=success!30] (pk) {PK};
+
+\draw[->, thick] (sk) -- (h1) node[midway, above, font=\tiny] {$H$};
+\draw[->, thick] (h1) -- (h2) node[midway, above, font=\tiny] {$H$};
+\draw[->, thick] (h2) -- (hd) node[midway, above, font=\tiny] {$H$};
+\draw[->, thick] (hd) -- (h4) node[midway, above, font=\tiny] {$H$};
+\draw[->, thick] (h4) -- (pk) node[midway, above, font=\tiny] {$H$};
+\end{tikzpicture}
+\end{frame}
+
+% ---- Slide: WOTS 2 ----
+\begin{frame}{WOTS: Toy Example (Chain Length $w=4$)}
+\vspace{4pt}
+Suppose our message digit is $d \in \{0, 1, 2, 3\}$.
+\begin{itemize}
+    \item \textbf{Secret Key (SK):} The random start of the chain.
+    \item \textbf{Public Key (PK):} The end of the chain, $H^3(\text{SK})$.
+\end{itemize}
+
+\vspace{10pt}
+To sign the digit $d$, we reveal the intermediate value $\sigma = H^d(\text{SK})$.
+
+\vspace{8pt}
+\centering
+\begin{tikzpicture}[
+    node distance=1.5cm,
+    hash/.style={draw, circle, minimum size=0.9cm, inner sep=0, font=\small},
+    >=Stealth
+]
+\node[hash, fill=accent!20] (sk) {SK};
+\node[hash, right=of sk] (h1) {$H^1$};
+\node[hash, right=of h1] (h2) {$H^2$};
+\node[hash, right=of h2, fill=success!30] (pk) {$H^3$};
+
+\draw[->, thick] (sk) -- (h1);
+\draw[->, thick] (h1) -- (h2);
+\draw[->, thick] (h2) -- (pk);
+
+\node[below=0.3cm of sk, font=\footnotesize\bfseries, text=accent] {Sign $d=0$};
+\node[below=0.3cm of h1, font=\footnotesize\bfseries, text=orange!80!black] {Sign $d=1$};
+\node[below=0.3cm of h2, font=\footnotesize\bfseries, text=orange!80!black] {Sign $d=2$};
+\node[below=0.3cm of pk, font=\footnotesize\bfseries, text=success] {Sign $d=3$};
+
+\draw[->, thick, dashed, success] (h1.south) to[bend right=30] node[below, font=\scriptsize] {Verify: apply $H^{3-d}$} (pk.south);
+\end{tikzpicture}
+\end{frame}
+
+% ---- Slide: WOTS 3 ----
+\begin{frame}{WOTS: Forgery Risk \& Checksum}
+\vspace{4pt}
+\textbf{The Risk of Forgery:}
+\begin{itemize}
+    \item If an attacker sees $\sigma = H^d(\text{SK})$, they can easily compute $H(\sigma) = H^{d+1}(\text{SK})$.
+    \item This means they can forge a signature for any digit $d' > d$.
+\end{itemize}
+
+\vspace{8pt}
+\textbf{The Solution: Checksum Logic}
+\begin{itemize}
+    \item We append a \emph{checksum} to the message: $C = \sum (w - 1 - d_i)$.
+    \item If an attacker tries to forge by increasing a message digit $d_i \to d'_i$, the checksum $C$ must \textbf{decrease}.
+    \item Decreasing a digit requires going \emph{backward} in the checksum's hash chain, which means inverting the hash!
+\end{itemize}
+
+\vspace{8pt}
+\begin{center}
+\footnotesize
+\begin{tabular}{lcc}
+\toprule
+$w$ & Sig Size (Bytes) & Chains \\
+\midrule
+4 & 4,256 & 133 \\
+\textbf{16} & \textbf{2,144} & \textbf{67} \\
+256 & 1,088 & 34 \\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{frame}
+
+% ---- Slide: WOTS 4 ----
+\begin{frame}{WOTS: Putting It All Together}
+\vspace{4pt}
+\textbf{The Full Winternitz OTS Scheme:}
+
+\vspace{6pt}
+\begin{enumerate}
+    \item \textbf{Message Preparation:} 
+    \begin{itemize}
+        \item Hash the message $M$ to get $h = H(M)$.
+        \item Split $h$ into base-$w$ digits: $d_1, d_2, \dots, d_\ell$.
+    \end{itemize}
+    \vspace{4pt}
+    \item \textbf{Checksum Addition:}
+    \begin{itemize}
+        \item Compute the checksum $C = \sum_{i=1}^{\ell} (w - 1 - d_i)$.
+        \item Convert $C$ to base-$w$ digits and append to the message digits.
+        \item Total digits = $\ell + \text{checksum digits}$ (each digit gets its own hash chain).
+    \end{itemize}
+    \vspace{4pt}
+    \item \textbf{Signing:}
+    \begin{itemize}
+        \item For each digit $v_i$ (message or checksum), compute $\sigma_i = H^{v_i}(\text{SK}_i)$.
+        \item The full signature is the collection of all $\sigma_i$.
+    \end{itemize}
+    \vspace{4pt}
+    \item \textbf{Verification:}
+    \begin{itemize}
+        \item The verifier computes the remaining steps in each chain: $H^{w - 1 - v_i}(\sigma_i)$.
+        \item The result must perfectly match the Public Key $\text{PK}_i = H^{w-1}(\text{SK}_i)$ for all chains.
+    \end{itemize}
+\end{enumerate}
+\end{frame}
+
+% ---- Slide: Merkle Tree 1 ----
+\begin{frame}{Merkle Signature Scheme: Key Generation}
+\vspace{4pt}
+\textbf{Problem:} One-Time Signatures (OTS) can only sign a single message securely.
+
+\vspace{6pt}
+\textbf{Solution:} Build a binary hash tree (Merkle Tree) over \(2^h\) OTS public keys to sign \(2^h\) messages.
+
+\vspace{12pt}
+\textbf{Key Generation Process:}
+\begin{enumerate}
+    \item Generate \(2^h\) independent OTS keypairs.
+    \item Hash each OTS public key to form the leaves: \(\text{Leaf}_i = H(\text{OTS\_PK}_i)\).
+    \item Compute parent nodes by hashing the concatenation of children: Parent \(= H(\text{left} \| \text{right})\).
+    \item The \textbf{MSS public key} is the tree root (just 32\,B).
+\end{enumerate}
+\end{frame}
+
+% ---- Slide: Merkle Tree 2 ----
+\begin{frame}{Merkle Signature Scheme: Sign \& Verify}
+\begin{columns}
+\begin{column}{0.50\textwidth}
+\textbf{To sign} the $i$-th message:
+\begin{itemize}
+    \item Sign the message with OTS key $i$.
+    \item Include the \emph{auth path}: the $h$ sibling hashes needed to reach the root.
+\end{itemize}
+
+\vspace{12pt}
+\textbf{To verify:}
+\begin{itemize}
+    \item Verify the underlying OTS signature against $\text{OTS\_PK}_i$.
+    \item Reconstruct the root from $\text{Leaf}_i$ and the auth path.
+    \item Check if reconstructed root $\stackrel{?}{=}$ MSS public key.
+\end{itemize}
+\end{column}
+\begin{column}{0.48\textwidth}
+\centering
+\begin{tikzpicture}[
+    level distance=1.3cm,
+    sibling distance=1.6cm,
+    every node/.style={draw, circle, minimum size=0.7cm, inner sep=0, font=\scriptsize},
+    edge from parent/.style={draw, ->, thick},
+    level 1/.style={sibling distance=3.2cm},
+    level 2/.style={sibling distance=1.6cm},
+    >=Stealth
+]
+\node[fill=success!25, font=\scriptsize\bfseries] {Root}
+    child { node[fill=gray!15] {$H_{01}$}
+        child { node[fill=gray!15] {$L_0$} }
+        child { node[fill=warn!30, line width=1.2pt] {$L_1$} }
+    }
+    child { node[fill=accent!15, line width=1.2pt] {$H_{23}$}
+        child { node[fill=gray!15] {$L_2$} }
+        child { node[fill=gray!15] {$L_3$} }
+    };
+
+% Legend
+\node[draw=none, font=\scriptsize, text=orange!80!black] at (-1.6, -4.5) {$\bullet$ Signing leaf};
+\node[draw=none, font=\scriptsize, text=accent] at (1.6, -4.5) {$\bullet$ Auth path};
+\end{tikzpicture}
+
+\vspace{6pt}
+\footnotesize
+Signing leaf $L_1$:\\
+Auth path = $[L_0,\; H_{23}]$\\
+Verify: $H(H(L_0 \| L_1) \| H_{23}) = \text{Root}$
+\end{column}
+\end{columns}
+\end{frame}
+
+% ====================================================================
+% PART 2
+% ====================================================================
+\section{Evaluation \& Security Analysis}
+
+% ---- Slide: OTS Benchmark Table ----
+\begin{frame}{OTS Performance Comparison}
+\begin{center}
+\small
+\begin{tabular}{lrrrrr}
+\toprule
+\textbf{Scheme} & \textbf{KG (ms)} & \textbf{Sign (ms)} & \textbf{Verify (ms)} & \textbf{Sig (B)} & \textbf{PK (B)} \\
+\midrule
+Lamport          & 0.17 & 0.03 & 0.17 & 8,192 & 16,384 \\
+WOTS $w\!=\!4$   & 0.29 & 0.15 & 0.15 & 4,256 & 4,256 \\
+\rowcolor{accent!10}
+WOTS $w\!=\!16$  & 0.56 & 0.30 & 0.28 & 2,144 & 2,144 \\
+WOTS $w\!=\!64$  & 1.49 & 0.68 & 0.84 & 1,440 & 1,440 \\
+WOTS $w\!=\!256$ & 4.47 & 2.28 & 2.29 & 1,088 & 1,088 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\vspace{6pt}
+Key observations:
+\begin{itemize}
+    \item Lamport signing is extremely fast (0.03\,ms) --- no hash computation, only copying blocks.
+    \item WOTS $w\!=\!256$ is \textbf{7.5$\times$ smaller} but \textbf{75$\times$ slower} than Lamport.
+    \item \colorbox{accent!10}{$w\!=\!16$ is the practical sweet spot} --- adopted by XMSS and SPHINCS+.
+\end{itemize}
+\end{frame}
+
+% ---- Slide: OTS Plots ----
+\begin{frame}{OTS: Size vs.\ Speed Trade-off}
+\begin{columns}
+\begin{column}{0.48\textwidth}
+\centering
+\includegraphics[width=\textwidth]{benchmarks/ots_sig_size.png}\\
+\footnotesize Signature size decreases \emph{logarithmically} with $w$.
+\end{column}
+\begin{column}{0.48\textwidth}
+\centering
+\includegraphics[width=\textwidth]{benchmarks/ots_times.png}\\
+\footnotesize Computation time grows \emph{linearly} --- each chain is $w\!-\!1$ hashes long.
+\end{column}
+\end{columns}
+\end{frame}
+
+% ---- Slide: MSS Height Table ----
+\begin{frame}{MSS Performance: Scaling with Tree Height}
+\begin{center}
+\small
+\begin{tabular}{crrrr}
+\toprule
+\textbf{Height $h$} & \textbf{Messages} & \textbf{KG (ms)} & \textbf{Sign (ms)} & \textbf{Sig Size (B)} \\
+\midrule
+\multicolumn{5}{c}{\textit{Lamport leaves}} \\
+\midrule
+4 & 16 & 5.70 & 0.24 & 24,640 \\
+6 & 64 & 22.63 & 0.26 & 24,704 \\
+8 & 256 & 92.52 & 0.27 & 24,768 \\
+\midrule
+\multicolumn{5}{c}{\textit{WOTS ($w\!=\!16$) leaves}} \\
+\midrule
+4 & 16 & 9.08 & 0.53 & 4,420 \\
+6 & 64 & 36.31 & 0.55 & 4,484 \\
+8 & 256 & 144.46 & 0.58 & 4,548 \\
+\bottomrule
+\end{tabular}
+\end{center}
+\vspace{4pt}
+\begin{itemize}
+    \item KeyGen: $O(2^h)$ --- doubles with each additional level.
+    \item Sign/Verify: \textbf{Constant} regardless of tree height.
+    \item Signature overhead: only \textbf{+32\,B per level} (one SHA-256 sibling).
+\end{itemize}
+\end{frame}
+
+% ---- Slide: MSS Plots ----
+\begin{frame}{MSS: KeyGen is the Bottleneck}
+\begin{columns}
+\begin{column}{0.48\textwidth}
+\centering
+\includegraphics[width=\textwidth]{benchmarks/mss_keygen.png}\\
+\footnotesize KeyGen scales as $O(2^h)$: the log-scale plot shows a linear trend.
+\end{column}
+\begin{column}{0.48\textwidth}
+\centering
+\includegraphics[width=\textwidth]{benchmarks/mss_sig_size.png}\\
+\footnotesize Signature size grows by just 32\,B per tree level.
+\end{column}
+\end{columns}
+\end{frame}
+
+% ---- Slide: MSS Sign/Verify ----
+\begin{frame}{MSS: Sign \& Verify are Constant-Time in $h$}
+\begin{columns}
+\begin{column}{0.48\textwidth}
+\centering
+\includegraphics[width=\textwidth]{benchmarks/mss_sign.png}
+\end{column}
+\begin{column}{0.48\textwidth}
+\centering
+\includegraphics[width=\textwidth]{benchmarks/mss_verify.png}
+\end{column}
+\end{columns}
+\vspace{6pt}
+\centering
+The $h$ additional hashes for the auth path are negligible compared to the underlying OTS operations.
+\end{frame}
+
+% ---- Slide: Parameter Tuning ----
+\begin{frame}{Parameter Tuning: MSS with Varying $w$}
+\begin{columns}
+\begin{column}{0.48\textwidth}
+\centering
+\includegraphics[width=\textwidth]{benchmarks/mss_w_tradeoff.png}
+\end{column}
+\begin{column}{0.48\textwidth}
+\textbf{Fixed:} $h = 4$ (16 messages).\\[6pt]
+The \emph{knee} near $w = 16$ marks the optimal balance:
+\begin{itemize}
+    \item Below $w\!=\!16$: rapid size improvement with modest time cost.
+    \item Above $w\!=\!16$: diminishing size returns, escalating time cost.
+\end{itemize}
+
+\vspace{8pt}
+\begin{block}{Recommendation}
+$w = 16$, $h = 4\text{--}8$\\
+This matches the XMSS and SPHINCS+ standard configurations.
+\end{block}
+\end{column}
+\end{columns}
+\end{frame}
+
+% ---- Slide: Security Theory ----
+\begin{frame}{Security Analysis: Key-Reuse Attack}
+\begin{columns}
+\begin{column}{0.55\textwidth}
+\textbf{Threat model:} A \emph{passive} attacker observes $k$ signatures made with the \textbf{same} Lamport key.
+
+\vspace{6pt}
+\textbf{Why it works:}
+\begin{itemize}
+    \item Each signature reveals one block per position (bit 0 or 1).
+    \item After $k$ signatures, the probability a specific block is \emph{still hidden} is $(1/2)^k$.
+\end{itemize}
+
+\vspace{6pt}
+\textbf{Forgery probability:}
+\[
+    P_{\text{forge}}(k) = \left(1 - 2^{-k}\right)^{256}
+\]
+
+\vspace{4pt}
+The attacker needs all 256 blocks matching the target message's hash bits. This converges to certainty exponentially.
+\end{column}
+\begin{column}{0.42\textwidth}
+\centering
+\begin{tabular}{ccc}
+\toprule
+$k$ & $P_{\text{forge}}$ & \textbf{SK Exposed} \\
+\midrule
+1 & $\approx 0\%$ & 50\% \\
+5 & 0.03\% & 96.9\% \\
+8 & 38.5\% & 99.6\% \\
+10 & 78\% & 99.9\% \\
+12 & 94\% & 100\% \\
+15 & 99.8\% & 100\% \\
+\alert{20} & \alert{100\%} & \alert{100\%} \\
+\bottomrule
+\end{tabular}
+
+\vspace{6pt}
+\footnotesize Results from 200 independent trials per $k$.
+\end{column}
+\end{columns}
+\end{frame}
+
+% ---- Slide: Security Plots ----
+\begin{frame}{Security Analysis: Empirical Validation}
+\begin{columns}
+\begin{column}{0.48\textwidth}
+\centering
+\includegraphics[width=\textwidth]{benchmarks/forgery_probability.png}\\
+\footnotesize Empirical vs.\ theoretical forgery rate.\\Theory and experiment match closely.
+\end{column}
+\begin{column}{0.48\textwidth}
+\centering
+\includegraphics[width=\textwidth]{benchmarks/key_exposure.png}\\
+\footnotesize Fraction of SK exposed vs.\ reuse count.\\By $k\!=\!12$ the \alert{complete} key is recovered.
+\end{column}
+\end{columns}
+
+\vspace{8pt}
+\centering
+\textbf{Takeaway:} Lamport OTS is \emph{catastrophically} insecure under key reuse.\\
+This is exactly why the Merkle tree enforces strict one-time leaf usage.
+\end{frame}
+
+% ---- Slide: Conclusion ----
+\begin{frame}{Conclusion}
+\begin{enumerate}
+    \item \textbf{Implemented} Lamport OTS, WOTS, and Merkle Signature Scheme from scratch using SHA-256.
+    \item \textbf{Benchmarked} across the full $(w, h)$ parameter space --- confirmed theoretical scaling predictions.
+    \item \textbf{Demonstrated} the key-reuse vulnerability with 200-trial Monte Carlo experiments matching the theoretical model.
+\end{enumerate}
+
+\vspace{8pt}
+\begin{block}{Key Insights}
+\begin{itemize}
+    \item WOTS $w\!=\!16$ is the standard for a reason: 4$\times$ smaller than Lamport at manageable cost.
+    \item MSS KeyGen is $O(2^h)$, but sign/verify are constant and signatures grow by only 32\,B/level.
+    \item Hash-based signatures are a viable, well-understood path to post-quantum security.
+\end{itemize}
+\end{block}
+
+\vspace{4pt}
+\textbf{Future work:} SPHINCS+ (stateless), hypertrees, FORS (few-time signatures).
+\end{frame}
+
+% ---- Slide: Thank You ----
+\begin{frame}{}
+\centering
+\vspace{2cm}
+{\Huge\bfseries Thank You}\\[16pt]
+{\Large Questions?}\\[20pt]
+\footnotesize
+Aicha Slaitane --- \texttt{aicha.slaitane@kaust.edu.sa}\\
+Abdullah Algethami --- \texttt{abdullah.algethami@kaust.edu.sa}
+\end{frame}
+
+\end{document}
