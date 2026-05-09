@@ -1,0 +1,36 @@
+name: Build PDFs
+
+on:
+  push:
+    paths:
+      - '**.tex'
+      - 'benchmarks/*.png'
+      - '.github/workflows/build-pdfs.yml'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compile report.tex
+        uses: xu-cheng/latex-action@v3
+        with:
+          root_file: report.tex
+
+      - name: Compile presentation.tex
+        uses: xu-cheng/latex-action@v3
+        with:
+          root_file: presentation.tex
+
+      - name: Commit updated PDFs
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add report.pdf presentation.pdf
+          if ! git diff --cached --quiet; then
+            git commit -m "Auto-rebuild PDFs from updated .tex sources"
+            git push
+          fi
