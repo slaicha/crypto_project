@@ -605,18 +605,17 @@ This is exactly why the Merkle tree enforces strict one-time leaf usage.
 \textbf{The problem:} Flat MSS KeyGen scales as $O(2^h)$ --- prohibitive at large signing capacities.
 
 \vspace{4pt}
-\textbf{The idea:} Stack two Merkle trees. The \emph{top} tree's leaves do not sign messages directly; each one certifies the root of a \emph{bottom} tree. Build bottom trees \alert{lazily} (only as needed).
+\textbf{The idea:} Stack two Merkle trees. The \emph{top} tree's leaves do not sign messages directly; each one certifies the root of a \emph{bottom} tree. Bottom trees are built \alert{lazily}, on demand.
 \begin{itemize}
     \item Total capacity: $N = 2^{h_{\text{top}} + h_{\text{bot}}}$
     \item Initial KeyGen: $O(2^{h_{\text{top}}} + 2^{h_{\text{bot}}}) \approx O(\sqrt{N})$ when balanced
-    \item Same construction is used internally by SPHINCS+ / SLH-DSA
+    \item Same construction used internally by SPHINCS+ / SLH-DSA
 \end{itemize}
 
-\vspace{4pt}
 \begin{columns}
 \begin{column}{0.55\textwidth}
 \centering
-\footnotesize
+\scriptsize
 \begin{tabular}{lrrr}
 \toprule
 \textbf{Scheme} & $N$ & \textbf{KG (ms)} & \textbf{Sig (B)} \\
@@ -637,10 +636,10 @@ Hypertree, $h_t\!=\!h_b\!=\!5$    & 1024 & \textbf{28.5}  & 8{,}940 \\
 \end{column}
 \end{columns}
 
-\vspace{4pt}
+\vspace{2pt}
 \centering
-\textbf{Result:} 8.2$\times$ faster KeyGen at $N\!=\!256$, 15.6$\times$ faster at $N\!=\!1024$.\\
-Sign/verify costs unchanged; signature roughly doubles --- a clean trade.
+\footnotesize
+\textbf{Result:} 8.2$\times$ faster KeyGen at $N\!=\!256$, 15.6$\times$ faster at $N\!=\!1024$. Signature roughly doubles.
 \end{frame}
 
 % ---- Slide: Conclusion ----
