@@ -776,25 +776,13 @@ Hypertree, $h_t\!=\!h_b\!=\!5$    & 1024 & \textbf{28.5}  & 8{,}940 \\
 
 % ---- Slide: Conclusion ----
 \begin{frame}{Conclusion}
-\begin{enumerate}
-    \item \textbf{Implemented} Lamport OTS, WOTS, Merkle Signature Scheme, and a 2-layer Hypertree from scratch using SHA-256.
-    \item \textbf{Benchmarked} across the full $(w, h)$ parameter space --- confirmed theoretical scaling predictions.
-    \item \textbf{Demonstrated} the key-reuse vulnerability with 200-trial Monte Carlo experiments matching the theoretical model.
-    \item \textbf{Extended} flat MSS to a 2-layer hypertree --- the same trick used by SPHINCS+/SLH-DSA --- for an order-of-magnitude KeyGen speedup at matched capacity.
-\end{enumerate}
-
-\vspace{6pt}
-\begin{block}{Key Insights}
 \begin{itemize}
-    \item WOTS $w\!=\!16$ is the standard for a reason: 4$\times$ smaller than Lamport at manageable cost.
-    \item Flat MSS KeyGen is $O(2^h)$, but sign/verify are constant and signatures grow by only 32\,B/level.
-    \item Hypertrees turn the $O(2^h)$ KeyGen cost into $O(\sqrt{N})$ at the cost of $\sim$2$\times$ signature size.
-    \item Hash-based signatures are a viable, well-understood path to post-quantum security.
+    \item We built the full pipeline from scratch using SHA-256: Lamport, WOTS, Merkle Signature Scheme, and a two-layer Hypertree.
+    \item WOTS with $w = 16$ is the standard for a reason: four times smaller signatures than Lamport, with manageable speed cost.
+    \item Merkle trees lift the one-time restriction: signing and verifying stay constant, and signatures barely grow with tree height.
+    \item Hypertrees make the scheme practical at large scale: dramatically faster key generation at the cost of roughly doubling the signature size.
+    \item Hash-based signatures rest on only one assumption --- that SHA-256 is one-way --- which is why they remain secure in the post-quantum era.
 \end{itemize}
-\end{block}
-
-\vspace{4pt}
-\textbf{Future work:} Stateless variants (SPHINCS+ FORS layer), batch verification.
 \end{frame}
 
 % ---- Slide: Thank You ----
