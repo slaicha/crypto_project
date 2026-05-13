@@ -49,15 +49,16 @@
     \item Lamport One-Time Signatures
     \item Winternitz OTS (WOTS)
     \item Merkle Signature Scheme
+    \item Hypertrees
 \end{enumerate}
 \end{column}
 \begin{column}{0.48\textwidth}
 \begin{enumerate}\setcounter{enumi}{4}
     \item OTS Benchmarks
+    \item Key-Reuse Attack
     \item MSS Performance Evaluation
     \item Parameter Tuning
-    \item Mandatory Extension: Key-Reuse Attack
-    \item Advanced Extension: Hypertrees
+    \item Hypertrees
     \item Conclusion
 \end{enumerate}
 \end{column}
@@ -280,7 +281,7 @@ To sign the digit $d$, we reveal the intermediate value $\sigma = H^d(\text{SK})
     \item Decreasing a digit requires going \emph{backward} in the checksum's hash chain, which means inverting the hash!
 \end{itemize}
 
-\vspace{8pt}
+\vspace{0pt}
 \begin{center}
 \footnotesize
 \begin{tabular}{lcc}
@@ -329,6 +330,53 @@ $w$ & Sig Size (Bytes) & Chains \\
 \end{enumerate}
 \end{frame}
 
+% ---- Slide: OTS in Merkle Trees ----
+\begin{frame}{From OTS/WOTS to the Merkle Signature Scheme}
+\textbf{Both Lamport and WOTS are one-time} --- a fresh keypair is needed for every message.
+
+\vspace{6pt}
+\textbf{Merkle's fix:} pre-generate $2^h$ OTS keypairs and bind them under a single public key using a hash tree.
+
+\begin{columns}
+\begin{column}{0.6\textwidth}
+\begin{itemize}
+    \item Each OTS public key $\text{PK}_i$ is hashed to form \textbf{leaf} $L_i$ of the tree.
+    \item Internal nodes are computed as $H(\text{left} \| \text{right})$.
+    \item The \textbf{tree root} is the single MSS public key (32\,B).
+    \item To sign message $i$: run OTS$_i$ and attach the auth path ($h$ sibling nodes) to let anyone recompute the root.
+\end{itemize}
+\vspace{4pt}
+
+\begin{block}{Advantage of WOTS over Lamport}
+WOTS ($w\!=\!16$) signatures are $\approx$4$\times$ smaller (2\,144\,B vs.\ 8\,192\,B), directly shrinking the on-wire MSS signature.
+\end{block}
+
+\end{column}
+\begin{column}{0.46\textwidth}
+\centering
+\begin{tikzpicture}[
+    nd/.style={draw, circle, minimum size=0.65cm, inner sep=0, font=\scriptsize},
+    lf/.style={draw, rectangle, rounded corners, minimum width=1.15cm, minimum height=0.45cm, font=\tiny, align=center},
+    >=Stealth]
+\node[nd, fill=success!25, font=\scriptsize\bfseries] (root) at (2,3.2) {Root};
+\node[nd, fill=gray!15] (h01) at (1,2.2) {$H_{01}$};
+\node[nd, fill=gray!15] (h23) at (3,2.2) {$H_{23}$};
+\node[lf, fill=accent!15] (l0) at (0,1.1) {OTS PK$_0$};
+\node[lf, fill=accent!15] (l1) at (1.3,1.1) {OTS PK$_1$};
+\node[lf, fill=accent!15] (l2) at (2.7,1.1) {OTS PK$_2$};
+\node[lf, fill=accent!15] (l3) at (4.0,1.1) {OTS PK$_3$};
+\draw[->] (h01) -- (root);
+\draw[->] (h23) -- (root);
+\draw[->] (l0) -- (h01);
+\draw[->] (l1) -- (h01);
+\draw[->] (l2) -- (h23);
+\draw[->] (l3) -- (h23);
+\node[font=\tiny, text=accent] at (2,0.5) {Lamport or WOTS public keys as leaves};
+\end{tikzpicture}
+\end{column}
+\end{columns}
+\end{frame}
+
 % ---- Slide: Merkle Tree 1 ----
 \begin{frame}{Merkle Signature Scheme: Key Generation}
 \vspace{4pt}
@@ -365,7 +413,9 @@ $w$ & Sig Size (Bytes) & Chains \\
     \item Check if reconstructed root $\stackrel{?}{=}$ MSS public key.
 \end{itemize}
 \end{column}
+
 \begin{column}{0.48\textwidth}
+
 \centering
 \begin{tikzpicture}[
     level distance=1.3cm,
@@ -400,10 +450,155 @@ Verify: $H(H(L_0 \| L_1) \| H_{23}) = \text{Root}$
 \end{columns}
 \end{frame}
 
+% ---- Slide: Hypertrees (Part 1 introduction) ----
+\begin{frame}{Multi-Layer Merkle Trees (Hypertrees)}
+\textbf{Problem:} Flat MSS KeyGen builds all $2^h$ OTS keys upfront --- exponentially expensive for large $h$.
+
+\vspace{6pt}
+\textbf{Idea:} Stack two Merkle trees. The \emph{top tree} is built immediately; each of its leaves certifies the root of a \emph{bottom tree} that is built \alert{lazily} only when needed.
+
+\begin{columns}
+\begin{column}{0.52\textwidth}
+\begin{itemize}
+    \item Total capacity: $N = 2^{h_{\text{top}} + h_{\text{bot}}}$ messages.
+    \item Initial KeyGen: $O(2^{h_{\text{top}}} + 2^{h_{\text{bot}}})$ OTS keys.
+    \item Signing produces \emph{two} MSS signatures: one from the bottom tree, one from the top tree certifying the bottom root.
+    \item This layering is the core idea behind \textbf{SPHINCS+ / SLH-DSA} (NIST post-quantum standard).
+\end{itemize}
+\end{column}
+\begin{column}{0.44\textwidth}
+\centering
+\begin{tikzpicture}[
+    nd/.style={draw, circle, minimum size=0.55cm, inner sep=0, font=\tiny},
+    >=Stealth, scale=0.88]
+\node[font=\tiny\bfseries, text=accent] at (2,4.1) {Top tree (built now)};
+\node[nd, fill=success!25] (tr)  at (2,3.6)  {\tiny R};
+\node[nd, fill=gray!15]    (tl)  at (1,2.8)  {};
+\node[nd, fill=gray!15]    (tr2) at (3,2.8)  {};
+\node[nd, fill=accent!30]  (tl1) at (0.4,2.0) {\tiny BR};
+\node[nd, fill=accent!30]  (tl2) at (1.6,2.0) {\tiny BR};
+\node[nd, fill=gray!30]    (tr1) at (2.4,2.0) {\tiny BR};
+\node[nd, fill=gray!30]    (tr3) at (3.6,2.0) {\tiny BR};
+\draw[->] (tl)--(tr); \draw[->] (tr2)--(tr);
+\draw[->] (tl1)--(tl); \draw[->] (tl2)--(tl);
+\draw[->] (tr1)--(tr2); \draw[->] (tr3)--(tr2);
+\node[font=\tiny, text=accent] at (1,1.5) {Built now};
+\node[font=\tiny, text=gray!60!black] at (3,1.5) {Built lazily};
+\end{tikzpicture}
+\end{column}
+\end{columns}
+\end{frame}
+
+
 % ====================================================================
 % PART 2
 % ====================================================================
 \section{Evaluation \& Extensions}
+
+% ---- Slide: Evaluation Setup ----
+\begin{frame}{Evaluation Setup: How Messages Are Generated}
+\textbf{Two distinct message generation strategies are used in the evaluation:}
+
+\vspace{8pt}
+\begin{columns}
+
+\begin{column}{0.48\textwidth}
+\textbf{Security Simulation (Key-Reuse Attack)}
+\begin{itemize}
+    \item A mix of \textbf{fixed commands} and \textbf{random strings}:
+    \begin{itemize}
+        \item \small\texttt{"Attack at dawn"}, \texttt{"Hold the line"}\ldots
+        \item \small\texttt{f"Random message \{random.random()\}"}
+    \end{itemize}
+    \item 20 unique messages are signed with the \emph{same} Lamport key.
+    \item A fixed target (\texttt{"Retreat at noon"}) tests if a forgery is possible.
+    \item Repeated over \textbf{200 independent trials} for statistical validity.
+\end{itemize}
+\end{column}
+
+
+\begin{column}{0.48\textwidth}
+\textbf{Performance Benchmarking}
+\begin{itemize}
+    \item A single fixed string is used across all timing trials:
+    \begin{block}{}
+    \small\texttt{"Post-quantum cryptography is exciting"}
+    \end{block}
+    \item Each configuration is measured over \textbf{5 repetitions}; the \emph{median} is reported to filter noise.
+    \item The same message is reused across all parameter sweeps for a fair, controlled comparison.
+\end{itemize}
+\end{column}
+
+\end{columns}
+\end{frame}
+
+% ---- Slide: Key-Reuse Attack Theory ----
+\begin{frame}{Lamport Key-Reuse Attack}
+
+\begin{columns}
+
+
+\begin{column}{0.55\textwidth}
+
+\vspace{4pt}
+
+\textbf{Threat model:} A \emph{passive} attacker observes $k$ signatures made with the \textbf{same} Lamport key.
+
+\vspace{6pt}
+\begin{itemize}
+    \item Each signature reveals one block per position (bit 0 or 1).
+    \item After $k$ signatures, the probability a specific block is \emph{still hidden} is $(1/2)^k$.
+\end{itemize}
+
+\vspace{6pt}
+\textbf{Forgery probability:}
+\[
+    P_{\text{forge}}(k) = \left(1 - 2^{-k}\right)^{256}
+\]
+
+\vspace{4pt}
+The attacker needs all 256 blocks matching the target message's hash bits. This converges to certainty exponentially.
+\end{column}
+\begin{column}{0.42\textwidth}
+\centering
+\begin{tabular}{ccc}
+\toprule
+$k$ & $P_{\text{forge}}$ & \textbf{SK Exposed} \\
+\midrule
+1 & $\approx 0\%$ & 50\% \\
+5 & 0.03\% & 96.9\% \\
+8 & 38.5\% & 99.6\% \\
+10 & 78\% & 99.9\% \\
+12 & 94\% & 100\% \\
+15 & 99.8\% & 100\% \\
+\alert{20} & \alert{100\%} & \alert{100\%} \\
+\bottomrule
+\end{tabular}
+
+\vspace{6pt}
+\footnotesize Results from 200 independent trials per $k$.
+\end{column}
+\end{columns}
+\end{frame}
+
+% ---- Slide: Key-Reuse Empirical Validation ----
+\begin{frame}{Empirical Validation}
+\begin{columns}
+\begin{column}{0.48\textwidth}
+\centering
+\includegraphics[width=\textwidth]{benchmarks/forgery_probability.png}\\
+\footnotesize Empirical vs.\ theoretical forgery rate.\\Theory and experiment match closely.
+\end{column}
+\begin{column}{0.48\textwidth}
+\centering
+\includegraphics[width=\textwidth]{benchmarks/key_exposure.png}\\
+\footnotesize Fraction of SK exposed vs.\ reuse count.\\By $k\!=\!12$ the \alert{complete} key is recovered.
+\end{column}
+\end{columns}
+
+\vspace{8pt}
+\centering
+\end{frame}
 
 % ---- Slide: OTS Benchmark Table ----
 \begin{frame}{OTS Performance Comparison}
@@ -535,82 +730,17 @@ This matches the XMSS and SPHINCS+ standard configurations.
 \end{columns}
 \end{frame}
 
-% ---- Slide: Mandatory Extension Theory ----
-\begin{frame}{Mandatory Extension: Lamport Key-Reuse Attack}
-\begin{columns}
-\begin{column}{0.55\textwidth}
-\textbf{Threat model:} A \emph{passive} attacker observes $k$ signatures made with the \textbf{same} Lamport key.
+% ---- Slide: Hypertrees (Evaluation section, benchmarks) ----
+\begin{frame}{Multi-Layer Merkle Trees (Hypertrees): Performance}
+% \textbf{The problem:} Flat MSS KeyGen scales as $O(2^h)$ --- prohibitive at large signing capacities.
 
-\vspace{6pt}
-\textbf{Why it works:}
-\begin{itemize}
-    \item Each signature reveals one block per position (bit 0 or 1).
-    \item After $k$ signatures, the probability a specific block is \emph{still hidden} is $(1/2)^k$.
-\end{itemize}
-
-\vspace{6pt}
-\textbf{Forgery probability:}
-\[
-    P_{\text{forge}}(k) = \left(1 - 2^{-k}\right)^{256}
-\]
-
-\vspace{4pt}
-The attacker needs all 256 blocks matching the target message's hash bits. This converges to certainty exponentially.
-\end{column}
-\begin{column}{0.42\textwidth}
-\centering
-\begin{tabular}{ccc}
-\toprule
-$k$ & $P_{\text{forge}}$ & \textbf{SK Exposed} \\
-\midrule
-1 & $\approx 0\%$ & 50\% \\
-5 & 0.03\% & 96.9\% \\
-8 & 38.5\% & 99.6\% \\
-10 & 78\% & 99.9\% \\
-12 & 94\% & 100\% \\
-15 & 99.8\% & 100\% \\
-\alert{20} & \alert{100\%} & \alert{100\%} \\
-\bottomrule
-\end{tabular}
-
-\vspace{6pt}
-\footnotesize Results from 200 independent trials per $k$.
-\end{column}
-\end{columns}
-\end{frame}
-
-% ---- Slide: Mandatory Extension Plots ----
-\begin{frame}{Mandatory Extension: Empirical Validation}
-\begin{columns}
-\begin{column}{0.48\textwidth}
-\centering
-\includegraphics[width=\textwidth]{benchmarks/forgery_probability.png}\\
-\footnotesize Empirical vs.\ theoretical forgery rate.\\Theory and experiment match closely.
-\end{column}
-\begin{column}{0.48\textwidth}
-\centering
-\includegraphics[width=\textwidth]{benchmarks/key_exposure.png}\\
-\footnotesize Fraction of SK exposed vs.\ reuse count.\\By $k\!=\!12$ the \alert{complete} key is recovered.
-\end{column}
-\end{columns}
-
-\vspace{8pt}
-\centering
-\textbf{Takeaway:} Lamport OTS is \emph{catastrophically} insecure under key reuse.\\
-This is exactly why the Merkle tree enforces strict one-time leaf usage.
-\end{frame}
-
-% ---- Slide: Advanced Extension --- Hypertrees ----
-\begin{frame}{Advanced Extension: Multi-Layer Merkle Trees (Hypertrees)}
-\textbf{The problem:} Flat MSS KeyGen scales as $O(2^h)$ --- prohibitive at large signing capacities.
-
-\vspace{4pt}
-\textbf{The idea:} Stack two Merkle trees. The \emph{top} tree's leaves do not sign messages directly; each one certifies the root of a \emph{bottom} tree. Bottom trees are built \alert{lazily}, on demand.
-\begin{itemize}
-    \item Total capacity: $N = 2^{h_{\text{top}} + h_{\text{bot}}}$
-    \item Initial KeyGen: $O(2^{h_{\text{top}}} + 2^{h_{\text{bot}}}) \approx O(\sqrt{N})$ when balanced
-    \item Same construction used internally by SPHINCS+ / SLH-DSA
-\end{itemize}
+% \vspace{4pt}
+% \textbf{The idea:} Stack two Merkle trees. The \emph{top} tree's leaves do not sign messages directly; each one certifies the root of a \emph{bottom} tree. Bottom trees are built \alert{lazily}, on demand.
+% \begin{itemize}
+%     \item Total capacity: $N = 2^{h_{\text{top}} + h_{\text{bot}}}$
+%     \item Initial KeyGen: $O(2^{h_{\text{top}}} + 2^{h_{\text{bot}}}) \approx O(\sqrt{N})$
+%     \item Same construction used internally by SPHINCS+ / SLH-DSA
+% \end{itemize}
 
 \begin{columns}
 \begin{column}{0.55\textwidth}
@@ -641,6 +771,8 @@ Hypertree, $h_t\!=\!h_b\!=\!5$    & 1024 & \textbf{28.5}  & 8{,}940 \\
 \footnotesize
 \textbf{Result:} 8.2$\times$ faster KeyGen at $N\!=\!256$, 15.6$\times$ faster at $N\!=\!1024$. Signature roughly doubles.
 \end{frame}
+
+
 
 % ---- Slide: Conclusion ----
 \begin{frame}{Conclusion}

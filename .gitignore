@@ -36,3 +36,5 @@ Thumbs.db
 .pytest_cache/
 
 tests/
+
+src/security_simulation.py
