@@ -79,21 +79,23 @@ pdflatex report.tex && pdflatex report.tex
 
 ## Selected Results
 
+All timing measurements are reported as **mean ± variance** over 5 independent runs.
+
 ### OTS Performance
 
 | Scheme | Sign (ms) | Verify (ms) | Signature Size |
 |---|---|---|---|
-| Lamport | 0.03 | 0.17 | 8,192 B |
-| WOTS (w=16) | 0.30 | 0.28 | 2,144 B |
-| WOTS (w=256) | 2.28 | 2.29 | 1,088 B |
+| Lamport | 0.02 ± 0.000 | 0.13 ± 0.002 | 8,192 B |
+| WOTS (w=16) | 0.19 ± 0.000 | 0.18 ± 0.000 | 2,144 B |
+| WOTS (w=256) | 1.56 ± 0.021 | 1.56 ± 0.014 | 1,088 B |
 
 ### MSS Performance (WOTS w=16)
 
 | Height | Leaves | KeyGen (ms) | Signature Size |
 |---|---|---|---|
-| h=4 | 16 | 9.08 | 4,420 B |
-| h=6 | 64 | 36.31 | 4,484 B |
-| h=8 | 256 | 144.46 | 4,548 B |
+| h=4 | 16 | 7.11 ± 0.03 | 4,420 B |
+| h=6 | 64 | 27.99 ± 0.17 | 4,484 B |
+| h=8 | 256 | 112.17 ± 1.13 | 4,548 B |
 
 ### Key-Reuse Attack
 

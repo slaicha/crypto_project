@@ -31,20 +31,26 @@ from src.merkle import MerkleSignature
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-RUNS = 5                      # repetitions per configuration (median is taken)
+RUNS = 5                      # repetitions per configuration (mean + variance reported)
 MESSAGE = "Post-quantum cryptography is exciting!"
 
 OUT_DIR = os.path.dirname(os.path.abspath(__file__))
 JSON_PATH = os.path.join(OUT_DIR, "benchmark_results.json")
 
 
-def _median(values):
-    """Calculates the median of a list of numbers to filter out measurement noise."""
-    s = sorted(values)
-    n = len(s)
-    if n % 2 == 1:
-        return s[n // 2]
-    return (s[n // 2 - 1] + s[n // 2]) / 2
+def _mean(values):
+    """Arithmetic mean (average) of a list of numbers."""
+    return sum(values) / len(values)
+
+
+def _variance(values):
+    """
+    Sample variance of a list of numbers.
+    Measures how much the individual runs spread around the mean —
+    a small variance means the measurement is stable and reliable.
+    """
+    m = _mean(values)
+    return sum((x - m) ** 2 for x in values) / (len(values) - 1)
 
 
 def _ots_sig_size(sig, scheme_name):
@@ -109,13 +115,16 @@ def sweep_ots():
         t0 = time.time(); sig = ots.sign(MESSAGE, sk);     sg_t.append((time.time() - t0) * 1000)
         t0 = time.time(); ots.verify(MESSAGE, sig, pk);    vf_t.append((time.time() - t0) * 1000)
     
-    # Store the median of the runs
-    entry["keygen_ms"]   = round(_median(kg_t), 4)
-    entry["sign_ms"]     = round(_median(sg_t), 4)
-    entry["verify_ms"]   = round(_median(vf_t), 4)
-    entry["sig_size"]    = _ots_sig_size(sig, "lamport")
-    entry["pk_size"]     = _ots_pk_size(pk, "lamport")
-    entry["sk_size"]     = _ots_sk_size(sk, "lamport")
+    # Store the mean and variance of the runs
+    entry["keygen_ms"]       = round(_mean(kg_t), 4)
+    entry["keygen_var"]      = round(_variance(kg_t), 6)
+    entry["sign_ms"]         = round(_mean(sg_t), 4)
+    entry["sign_var"]        = round(_variance(sg_t), 6)
+    entry["verify_ms"]       = round(_mean(vf_t), 4)
+    entry["verify_var"]      = round(_variance(vf_t), 6)
+    entry["sig_size"]        = _ots_sig_size(sig, "lamport")
+    entry["pk_size"]         = _ots_pk_size(pk, "lamport")
+    entry["sk_size"]         = _ots_sk_size(sk, "lamport")
     results.append(entry)
 
     # --- WOTS Parameter Sweep ---
@@ -129,9 +138,12 @@ def sweep_ots():
             t0 = time.time(); sig = ots.sign(MESSAGE, sk);     sg_t.append((time.time() - t0) * 1000)
             t0 = time.time(); ots.verify(MESSAGE, sig, pk);    vf_t.append((time.time() - t0) * 1000)
         
-        entry["keygen_ms"]   = round(_median(kg_t), 4)
-        entry["sign_ms"]     = round(_median(sg_t), 4)
-        entry["verify_ms"]   = round(_median(vf_t), 4)
+        entry["keygen_ms"]   = round(_mean(kg_t), 4)
+        entry["keygen_var"]  = round(_variance(kg_t), 6)
+        entry["sign_ms"]     = round(_mean(sg_t), 4)
+        entry["sign_var"]    = round(_variance(sg_t), 6)
+        entry["verify_ms"]   = round(_mean(vf_t), 4)
+        entry["verify_var"]  = round(_variance(vf_t), 6)
         entry["sig_size"]    = _ots_sig_size(sig, "wots")
         entry["pk_size"]     = _ots_pk_size(pk, "wots")
         entry["sk_size"]     = _ots_sk_size(sk, "wots")
@@ -168,10 +180,13 @@ def sweep_mss_height():
                 t0 = time.time(); mss.verify(MESSAGE, sig, pk);    vf_t.append((time.time() - t0) * 1000)
                 sig_size = _mss_sig_size(sig)
             
-            entry["keygen_ms"] = round(_median(kg_t), 4)
-            entry["sign_ms"]   = round(_median(sg_t), 4)
-            entry["verify_ms"] = round(_median(vf_t), 4)
-            entry["sig_size"]  = sig_size
+            entry["keygen_ms"]  = round(_mean(kg_t), 4)
+            entry["keygen_var"] = round(_variance(kg_t), 6)
+            entry["sign_ms"]    = round(_mean(sg_t), 4)
+            entry["sign_var"]   = round(_variance(sg_t), 6)
+            entry["verify_ms"]  = round(_mean(vf_t), 4)
+            entry["verify_var"] = round(_variance(vf_t), 6)
+            entry["sig_size"]   = sig_size
             results.append(entry)
 
     return results
@@ -202,10 +217,13 @@ def sweep_mss_w(fixed_h=4):
             t0 = time.time(); mss.verify(MESSAGE, sig, pk);    vf_t.append((time.time() - t0) * 1000)
             sig_size = _mss_sig_size(sig)
             
-        entry["keygen_ms"] = round(_median(kg_t), 4)
-        entry["sign_ms"]   = round(_median(sg_t), 4)
-        entry["verify_ms"] = round(_median(vf_t), 4)
-        entry["sig_size"]  = sig_size
+        entry["keygen_ms"]  = round(_mean(kg_t), 4)
+        entry["keygen_var"] = round(_variance(kg_t), 6)
+        entry["sign_ms"]    = round(_mean(sg_t), 4)
+        entry["sign_var"]   = round(_variance(sg_t), 6)
+        entry["verify_ms"]  = round(_mean(vf_t), 4)
+        entry["verify_var"] = round(_variance(vf_t), 6)
+        entry["sig_size"]   = sig_size
         results.append(entry)
 
     return results
@@ -247,31 +265,40 @@ def main():
     print(f"Results saved to {JSON_PATH}")
 
     # --- Pretty-print summary tables ---
-    print("\n" + "=" * 60)
-    print("OTS Primitive Comparison")
-    print("=" * 60)
-    print(f"{'Scheme':<18} {'KeyGen (ms)':>12} {'Sign (ms)':>11} {'Verify (ms)':>12} {'Sig (B)':>9} {'PK (B)':>9}")
-    print("-" * 72)
+    print("\n" + "=" * 78)
+    print("OTS Primitive Comparison  (time = mean +/- variance over 5 runs)")
+    print("=" * 78)
+    print(f"{'Scheme':<16} {'KeyGen (ms)':>18} {'Sign (ms)':>18} {'Verify (ms)':>18} {'Sig(B)':>8}")
+    print("-" * 80)
     for r in ots_results:
         name = r["scheme"] + (f" (w={r['w']})" if r["w"] else "")
-        print(f"{name:<18} {r['keygen_ms']:>12.2f} {r['sign_ms']:>11.2f} {r['verify_ms']:>12.2f} {r['sig_size']:>9} {r['pk_size']:>9}")
+        kg = f"{r['keygen_ms']:.2f}+-{r['keygen_var']:.4f}"
+        sg = f"{r['sign_ms']:.2f}+-{r['sign_var']:.4f}"
+        vf = f"{r['verify_ms']:.2f}+-{r['verify_var']:.4f}"
+        print(f"{name:<16} {kg:>18} {sg:>18} {vf:>18} {r['sig_size']:>8}")
 
-    print("\n" + "=" * 60)
-    print("MSS Height Sweep")
-    print("=" * 60)
-    print(f"{'Config':<28} {'Leaves':>6} {'KeyGen (ms)':>12} {'Sign (ms)':>11} {'Verify (ms)':>12} {'Sig (B)':>9}")
+    print("\n" + "=" * 78)
+    print("MSS Height Sweep  (time = mean +/- variance over 5 runs)")
+    print("=" * 78)
+    print(f"{'Config':<22} {'KeyGen (ms)':>18} {'Sign (ms)':>18} {'Verify (ms)':>18}")
     print("-" * 80)
     for r in mss_height_results:
         name = f"h={r['height']}, {r['scheme']}" + (f" w={r['w']}" if r['w'] else "")
-        print(f"{name:<28} {r['leaves']:>6} {r['keygen_ms']:>12.2f} {r['sign_ms']:>11.2f} {r['verify_ms']:>12.2f} {r['sig_size']:>9}")
+        kg = f"{r['keygen_ms']:.2f}+-{r['keygen_var']:.4f}"
+        sg = f"{r['sign_ms']:.2f}+-{r['sign_var']:.4f}"
+        vf = f"{r['verify_ms']:.2f}+-{r['verify_var']:.4f}"
+        print(f"{name:<22} {kg:>18} {sg:>18} {vf:>18}")
 
-    print("\n" + "=" * 60)
-    print("MSS w-Sweep (h=4, WOTS)")
-    print("=" * 60)
-    print(f"{'w':>5} {'KeyGen (ms)':>12} {'Sign (ms)':>11} {'Verify (ms)':>12} {'Sig (B)':>9}")
-    print("-" * 52)
+    print("\n" + "=" * 78)
+    print("MSS w-Sweep (h=4, WOTS)  (time = mean +/- variance over 5 runs)")
+    print("=" * 78)
+    print(f"{'w':>5} {'KeyGen (ms)':>18} {'Sign (ms)':>18} {'Verify (ms)':>18}")
+    print("-" * 62)
     for r in mss_w_results:
-        print(f"{r['w']:>5} {r['keygen_ms']:>12.2f} {r['sign_ms']:>11.2f} {r['verify_ms']:>12.2f} {r['sig_size']:>9}")
+        kg = f"{r['keygen_ms']:.2f}+-{r['keygen_var']:.4f}"
+        sg = f"{r['sign_ms']:.2f}+-{r['sign_var']:.4f}"
+        vf = f"{r['verify_ms']:.2f}+-{r['verify_var']:.4f}"
+        print(f"{r['w']:>5} {kg:>18} {sg:>18} {vf:>18}")
 
 
 if __name__ == "__main__":

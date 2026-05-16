@@ -38,54 +38,62 @@ W = 16
 MESSAGE = b"benchmark message"
 
 
+RUNS = 5                       # repetitions per configuration (mean + variance reported)
+
+
+def _mean(values):
+    """Arithmetic mean (average) of a list of numbers."""
+    return sum(values) / len(values)
+
+
+def _variance(values):
+    """Sample variance — how much the runs spread around the mean."""
+    m = _mean(values)
+    return sum((x - m) ** 2 for x in values) / (len(values) - 1)
+
+
 # ---------- helpers ----------
 def measure_flat(height):
-    mss = MerkleSignature(height=height, ots_scheme=OTS_SCHEME, w=W)
-    t0 = time.time()
-    sk, pk = mss.generate_keypair()
-    keygen_ms = (time.time() - t0) * 1000
+    kg_t = []
+    sig_bytes = 0
+    ok = True
+    for _ in range(RUNS):
+        mss = MerkleSignature(height=height, ots_scheme=OTS_SCHEME, w=W)
+        t0 = time.time()
+        sk, pk = mss.generate_keypair()
+        kg_t.append((time.time() - t0) * 1000)
+        sig = mss.sign(MESSAGE, sk)
+        ok = mss.verify(MESSAGE, sig, pk)
+        sig_bytes = _approx_mss_sig_size(sig)
 
-    t0 = time.time()
-    sig = mss.sign(MESSAGE, sk)
-    sign_ms = (time.time() - t0) * 1000
-
-    t0 = time.time()
-    ok = mss.verify(MESSAGE, sig, pk)
-    verify_ms = (time.time() - t0) * 1000
-
-    sig_bytes = _approx_mss_sig_size(sig)
     return {
         "scheme": f"Flat MSS (h={height})",
         "capacity": 1 << height,
-        "keygen_ms": keygen_ms,
-        "sign_ms": sign_ms,
-        "verify_ms": verify_ms,
+        "keygen_ms": round(_mean(kg_t), 4),
+        "keygen_var": round(_variance(kg_t), 6),
         "sig_bytes": sig_bytes,
         "verified": ok,
     }
 
 
 def measure_hyper(h_top, h_bot):
-    ht = Hypertree(h_top=h_top, h_bot=h_bot, ots_scheme=OTS_SCHEME, w=W)
-    t0 = time.time()
-    sk, pk = ht.generate_keypair()
-    keygen_ms = (time.time() - t0) * 1000
+    kg_t = []
+    sig_bytes = 0
+    ok = True
+    for _ in range(RUNS):
+        ht = Hypertree(h_top=h_top, h_bot=h_bot, ots_scheme=OTS_SCHEME, w=W)
+        t0 = time.time()
+        sk, pk = ht.generate_keypair()
+        kg_t.append((time.time() - t0) * 1000)
+        sig = ht.sign(MESSAGE, sk)
+        ok = ht.verify(MESSAGE, sig, pk)
+        sig_bytes = _approx_hyper_sig_size(sig)
 
-    t0 = time.time()
-    sig = ht.sign(MESSAGE, sk)
-    sign_ms = (time.time() - t0) * 1000
-
-    t0 = time.time()
-    ok = ht.verify(MESSAGE, sig, pk)
-    verify_ms = (time.time() - t0) * 1000
-
-    sig_bytes = _approx_hyper_sig_size(sig)
     return {
         "scheme": f"Hypertree (h_top={h_top}, h_bot={h_bot})",
         "capacity": 1 << (h_top + h_bot),
-        "keygen_ms": keygen_ms,
-        "sign_ms": sign_ms,
-        "verify_ms": verify_ms,
+        "keygen_ms": round(_mean(kg_t), 4),
+        "keygen_var": round(_variance(kg_t), 6),
         "sig_bytes": sig_bytes,
         "verified": ok,
     }
@@ -131,8 +139,8 @@ def main():
             r = measure_hyper(**kwargs)
         results.append(r)
         print(f"  {r['scheme']:<35} cap={r['capacity']:<6} "
-              f"KG={r['keygen_ms']:8.2f} ms  sign={r['sign_ms']:6.2f} ms  "
-              f"verify={r['verify_ms']:6.2f} ms  sig={r['sig_bytes']} B")
+              f"KG={r['keygen_ms']:8.2f} +- {r['keygen_var']:.4f} ms  "
+              f"sig={r['sig_bytes']} B")
 
     # Save raw numbers
     json_path = os.path.join(out_dir, "hypertree_results.json")
