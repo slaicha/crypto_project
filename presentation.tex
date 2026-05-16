@@ -318,25 +318,23 @@ The message hash is split into many digits --- and \textbf{each digit gets its o
 
 % ---- Slide: WOTS 3 ----
 \begin{frame}{WOTS: Why We Need a Checksum}
-\vspace{2pt}
 \textbf{The problem:} hashing \emph{forward} is free for everyone --- including the attacker.
 \begin{itemize}
-    \item A signature reveals a value somewhere along each chain.
-    \item The attacker can hash it forward and produce a valid value for any \emph{higher} digit.
-    \item So, unprotected, an attacker could forge any message whose digits are all $\geq$ ours.
+    \item The attacker can hash a revealed value forward to forge a valid value for any \emph{higher} digit.
+    \item Unprotected, they could forge any message whose digits are all $\geq$ ours.
 \end{itemize}
 
-\vspace{6pt}
-\textbf{The fix: a checksum.} We append a checksum $C = \sum_i (w - 1 - d_i)$ and sign it with extra chains.
+\vspace{4pt}
+\textbf{The fix: a checksum} $C = \sum_i (w - 1 - d_i)$, signed with extra chains.
 \begin{itemize}
     \item Raising any message digit makes the checksum \emph{decrease}.
     \item A smaller checksum digit means going \emph{backward} in a chain --- which needs inverting $H$.
-    \item So the attacker is blocked: they cannot raise a digit without breaking the checksum.
+    \item So the attacker cannot raise a digit without breaking the checksum.
 \end{itemize}
 
 \vspace{4pt}
 \begin{center}
-\footnotesize
+\scriptsize
 \begin{tabular}{ccc}
 \toprule
 $w$ & Chains (incl. checksum) & Signature Size \\
@@ -346,9 +344,9 @@ $w$ & Chains (incl. checksum) & Signature Size \\
 \textbf{16} & \textbf{67} & \textbf{2,144 B} \\
 256 & 34 & 1,088 B \\
 \bottomrule
-\end{tabular}\\[3pt]
-\scriptsize Larger $w$ $\Rightarrow$ fewer chains $\Rightarrow$ smaller signature (but longer chains to compute).
+\end{tabular}
 \end{center}
+\centering\scriptsize Larger $w$ $\Rightarrow$ fewer chains $\Rightarrow$ smaller signature (but longer chains to compute).
 \end{frame}
 
 % ---- Slide: WOTS 4 ----
