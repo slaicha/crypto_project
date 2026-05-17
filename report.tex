@@ -53,7 +53,7 @@ In this project, we implement the fundamental building blocks that underpin mode
 Proposed by Lamport in 1979~\cite{lamport1979}, the scheme generates a secret key consisting of $n$ pairs of random blocks $\{(\text{SK}[i][0],\ \text{SK}[i][1])\}_{i=0}^{n-1}$, where $n$ is the hash output length in bits (256 for SHA-256) and each block is 32 bytes. The public key is the element-wise hash: $\text{PK}[i][b] = H(\text{SK}[i][b])$. To sign a message $m$, the signer computes $h = H(m)$ and reveals $\text{SK}[i][h_i]$ for each bit $h_i$. Verification rehashes each revealed block and compares against the public key. The resulting signature contains 256 blocks of 32 bytes each, totaling 8192 bytes, and the public key is twice that size (16384 bytes) since it stores both hash images per row.
 
 \subsection{Winternitz OTS (WOTS)}
-WOTS generalizes Lamport by processing the message hash in base-$w$ digits rather than individual bits, dramatically reducing signature size. Each digit is signed by its own independent hash chain. The secret key consists of $\ell = \ell_1 + \ell_2$ random start values (chains). For a 256-bit hash (e.g., SHA-256) and $w=16$, the message requires $\ell_1 = 256 / 4 = 64$ chains. 
+WOTS, first described by Merkle~\cite{merkle1989} and later formally specified within the XMSS standard~\cite{xmss}, generalizes Lamport by processing the message hash in base-$w$ digits rather than individual bits, dramatically reducing signature size. Each digit is signed by its own independent hash chain. The secret key consists of $\ell = \ell_1 + \ell_2$ random start values (chains). For a 256-bit hash (e.g., SHA-256) and $w=16$, the message requires $\ell_1 = 256 / 4 = 64$ chains. 
 To prevent forgery where an attacker hashes a revealed value forward to claim a higher digit, WOTS appends a checksum $C = \sum_i (w - 1 - d_i)$. With $w=16$, the maximum sum of 64 digits is $64 \times 15 = 960$, requiring $\ell_2 = 3$ additional base-16 chains to encode ($16^3 = 4096$). Thus, the full key uses exactly $64 + 3 = 67$ parallel chains.
 The public key is obtained by hashing each secret block $w-1$ times to reach the chain end: $\text{PK}[i] = H^{w-1}(\text{SK}[i])$. To sign digit $d_i$, the signer reveals the value at position $d_i$ in the chain. The verifier finishes the chain by applying $w-1-d_i$ additional hashes and checks against the public key end. This reduces signature size significantly (e.g., 2,144\,B vs.\ 8,192\,B for Lamport) but increases computation since each chain requires up to $w-1$ hash evaluations.
 
@@ -246,7 +246,7 @@ Three key observations emerge from Table~\ref{tab:mss_height} and Figures~\ref{f
 
 \subsection{Parameter Tuning: MSS with Varying $w$}
 
-Fixing $h\!=\!4$ (16 leaves), we varied the WOTS parameter to study the size-vs-speed trade-off within the full MSS context (Table~\ref{tab:mss_w}). Going from $w\!=\!4$ to $w\!=\!256$ shrinks signatures by 3.7$\times$ (8644\,B to 2308\,B) but increases total computation (sign + verify) by 13$\times$. Figure~\ref{fig:mss_tradeoff} visualizes this Pareto frontier, showing the smooth and predictable nature of the trade-off curve. The ``knee'' of the curve sits near $w\!=\!16$, which is why real-world standards (XMSS, SPHINCS+) adopt this value.
+Fixing $h\!=\!4$ (16 leaves), we varied the WOTS parameter to study the size-vs-speed trade-off within the full MSS context (Table~\ref{tab:mss_w}). Going from $w\!=\!4$ to $w\!=\!256$ shrinks signatures by 3.7$\times$ (8644\,B to 2308\,B) but increases total computation (sign + verify) by 13$\times$. Figure~\ref{fig:mss_tradeoff} visualizes this Pareto frontier, showing the smooth and predictable nature of the trade-off curve. The ``knee'' of the curve sits near $w\!=\!16$, which is why real-world standards (XMSS~\cite{xmss}, SPHINCS+~\cite{sphincs}) adopt this value.
 
 \begin{table}[htbp]
 \centering
@@ -340,6 +340,7 @@ These results confirm that hash-based signatures are a viable and well-understoo
 \bibitem{shor1994} P.~W.~Shor, ``Algorithms for quantum computation: discrete logarithms and factoring,'' \emph{Proc.\ 35th Annual Symp.\ on Foundations of Computer Science (FOCS)}, pp.~124--134, IEEE, 1994.
 \bibitem{lamport1979} L.~Lamport, ``Constructing digital signatures from a one-way function,'' \emph{SRI International, Technical Report CSL-98}, 1979.
 \bibitem{merkle1989} R.~C.~Merkle, ``A certified digital signature,'' \emph{Advances in Cryptology --- CRYPTO '89}, LNCS 435, pp.~218--238, Springer, 1990.
+\bibitem{xmss} A.~Huelsing, D.~Butin, S.~Gazdag, J.~Rijneveld, and A.~Mohaisen, ``XMSS: eXtended Merkle Signature Scheme,'' \emph{IRTF RFC 8391}, 2018.
 \bibitem{sphincs} D.~J.\ Bernstein et al., ``SPHINCS+: Submission to the NIST post-quantum cryptography standardization project,'' original submission, 2017.
 \bibitem{fips205} National Institute of Standards and Technology, ``Stateless Hash-Based Digital Signature Standard,'' \emph{FIPS 205 (SLH-DSA)}, 2024.
 \end{thebibliography}
