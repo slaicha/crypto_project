@@ -12,6 +12,7 @@
 \usepackage{float}
 \usepackage{xcolor}
 \usepackage{caption}
+\usepackage{subcaption}
 \usepackage{enumitem}
 \usepackage{multicol}
 
@@ -50,166 +51,37 @@ In this project, we implement the fundamental building blocks that underpin mode
 Proposed by Lamport in 1979~\cite{lamport1979}, the scheme generates a secret key consisting of $n$ pairs of random blocks $\{(\text{SK}[i][0],\ \text{SK}[i][1])\}_{i=0}^{n-1}$, where $n$ is the hash output length in bits (256 for SHA-256) and each block is 32 bytes. The public key is the element-wise hash: $\text{PK}[i][b] = H(\text{SK}[i][b])$. To sign a message $m$, the signer computes $h = H(m)$ and reveals $\text{SK}[i][h_i]$ for each bit $h_i$. Verification rehashes each revealed block and compares against the public key. The resulting signature contains 256 blocks of 32 bytes each, totaling 8192 bytes, and the public key is twice that size (16384 bytes) since it stores both hash images per row.
 
 \subsection{Winternitz OTS (WOTS)}
-WOTS generalizes Lamport by processing the message hash in base-$w$ digits rather than individual bits. The secret key consists of $\ell = \ell_1 + \ell_2$ random blocks, where $\ell_1 = \lceil 256 / \log_2 w \rceil$ covers the message digits and $\ell_2 = \lfloor \log_2(\ell_1(w-1)) / \log_2 w \rfloor + 1$ covers a checksum. The checksum prevents forgery by digit reduction: decreasing any message digit would require increasing the checksum digits, which requires additional hash iterations the attacker cannot reverse. The public key is obtained by hashing each secret block $w-1$ times: $\text{PK}[i] = H^{w-1}(\text{SK}[i])$. To sign, each block is hashed $d_i$ times; to verify, the verifier applies $w-1-d_i$ additional hashes and checks against PK. This reduces signature size from $\ell_1 + \ell_2$ blocks (vs.\ Lamport's $2n$), but increases computation since each chain requires up to $w-1$ hash evaluations.
+WOTS generalizes Lamport by processing the message hash in base-$w$ digits rather than individual bits, dramatically reducing signature size. Each digit is signed by its own independent hash chain. The secret key consists of $\ell = \ell_1 + \ell_2$ random start values (chains). For a 256-bit hash (e.g., SHA-256) and $w=16$, the message requires $\ell_1 = 256 / 4 = 64$ chains. 
+To prevent forgery where an attacker hashes a revealed value forward to claim a higher digit, WOTS appends a checksum $C = \sum_i (w - 1 - d_i)$. With $w=16$, the maximum sum of 64 digits is $64 \times 15 = 960$, requiring $\ell_2 = 3$ additional base-16 chains to encode ($16^3 = 4096$). Thus, the full key uses exactly $64 + 3 = 67$ parallel chains.
+The public key is obtained by hashing each secret block $w-1$ times to reach the chain end: $\text{PK}[i] = H^{w-1}(\text{SK}[i])$. To sign digit $d_i$, the signer reveals the value at position $d_i$ in the chain. The verifier finishes the chain by applying $w-1-d_i$ additional hashes and checks against the public key end. This reduces signature size significantly (e.g., 2,144\,B vs.\ 8,192\,B for Lamport) but increases computation since each chain requires up to $w-1$ hash evaluations.
 
 \subsection{Merkle Signature Scheme}
 OTS schemes are inherently single-use. The Merkle tree construction~\cite{merkle1989} overcomes this by generating $N = 2^h$ independent OTS keypairs, hashing each OTS public key into a leaf node, and building a binary hash tree whose root serves as the long-term public key. A signature for the $i$-th message includes: (a) the OTS signature, (b) the OTS public key, and (c) an \emph{authentication path}---the $h$ sibling hashes along the path from leaf $i$ to the root. The verifier checks the OTS signature and reconstructs the root from the leaf using the authentication path, accepting if and only if the reconstructed root matches the published public key. A \texttt{next\_leaf} counter enforces strict one-time usage of each leaf, raising an error upon exhaustion.
 
+\subsection{Multi-Layer Merkle Trees (Hypertrees)}
+\label{sec:hypertree}
+Section~\ref{sec:experiments} (and Figure~\ref{fig:mss_keygen} in particular) exposed the dominant practical limitation of a flat MSS: KeyGen scales as $O(2^h)$, which becomes prohibitive once we want signing capacities of $2^{16}$ or beyond. We address this by implementing a two-layer \emph{hypertree}, the same multi-layer Merkle construction used internally by SPHINCS+/SLH-DSA.
+
+A two-layer hypertree consists of one \emph{top tree} of height $h_{\text{top}}$ and multiple \emph{bottom trees} of height $h_{\text{bot}}$. The top tree is built \emph{immediately} during initial key generation. Its OTS keypairs are generated deterministically from a secret seed, and its leaves are simply the hashes of these Top OTS public keys. Crucially, the top tree leaves do not contain or depend on the roots of the bottom trees, allowing the top tree to be fully constructed in advance. The root of this top tree serves as the global public key.
+
+The decisive property is that bottom trees are built \emph{lazily}. The cryptographic link between the top tree and a bottom tree is forged dynamically when a signature is requested. The process works as follows:
+\begin{enumerate}
+    \item \textbf{Materialization}: Based on the message index, the specific bottom tree needed for that index is generated, and its root hash is computed.
+    \item \textbf{The Link Signature}: This bottom-tree root is treated as a ``message'' and is signed using the Top OTS secret key corresponding to the leaf directly above that bottom tree. Because the Top OTS public keys are already committed to in the global top root, this signature securely binds the lazily generated bottom tree into the trusted global structure.
+    \item \textbf{The Final Bundle}: The resulting hypertree signature bundles four components: (1) the bottom-tree OTS signature on the actual message, (2) the bottom-tree authentication path to reconstruct the bottom root, (3) the Top OTS link signature on the reconstructed bottom root, and (4) the top-tree authentication path to climb from the top leaf to the global top root.
+\end{enumerate}
+The total signing capacity is $N = 2^{h_{\text{top}} + h_{\text{bot}}}$. This lazy linking turns the up-front cost from $O(2^h)$ into $O(2^{h_{\text{top}}})$---a square-root reduction when $h_{\text{top}} \approx h_{\text{bot}}$. Verification simply walks this chain: it verifies the bottom-tree signature to get the bottom root, then verifies the top-tree signature on that bottom root to climb to the global top root.
+
+
 % ══════════════════════════════════════════════════════════════
 \section{Experimental Results}\label{sec:experiments}
 
-All benchmarks were collected on a local Linux workstation using SHA-256. Timing measurements are medians over 5 independent runs.
-
-\subsection{OTS Primitive Comparison}
-
-We benchmarked Lamport OTS and WOTS across all power-of-two Winternitz parameters from $w=4$ to $w=256$. Table~\ref{tab:ots_full} summarizes the key generation, signing, verification times, and key/signature sizes.
-
-\begin{table}[H]
-\centering
-\small
-\begin{tabular}{lccccc}
-\toprule
-\textbf{Scheme} & \textbf{KG} & \textbf{Sign} & \textbf{Vrfy} & \textbf{Sig} & \textbf{PK} \\
- & (ms) & (ms) & (ms) & (B) & (B) \\
-\midrule
-Lamport     & 0.53 & 0.03 & 0.17 & 8192  & 16384 \\
-WOTS $w\!=\!4$   & 0.29 & 0.15 & 0.15 & 4256  & 4256  \\
-WOTS $w\!=\!8$   & 0.38 & 0.18 & 0.21 & 2880  & 2880  \\
-WOTS $w\!=\!16$  & 0.56 & 0.30 & 0.28 & 2144  & 2144  \\
-WOTS $w\!=\!32$  & 0.92 & 0.47 & 0.47 & 1760  & 1760  \\
-WOTS $w\!=\!64$  & 1.49 & 0.68 & 0.84 & 1440  & 1440  \\
-WOTS $w\!=\!128$ & 2.53 & 1.27 & 1.31 & 1248  & 1248  \\
-WOTS $w\!=\!256$ & 4.47 & 2.28 & 2.29 & 1088  & 1088  \\
-\bottomrule
-\end{tabular}
-\caption{OTS performance across Winternitz parameters. KG = KeyGen, Vrfy = Verify, Sig = signature size, PK = public key size.}
-\label{tab:ots_full}
-\end{table}
-
-The Winternitz trade-off is clearly visible in both Table~\ref{tab:ots_full} and Figures~\ref{fig:ots_sig}--\ref{fig:ots_times}. As $w$ increases, signature size decreases logarithmically (Figure~\ref{fig:ots_sig}): WOTS with $w\!=\!256$ is 7.5$\times$ smaller than Lamport (1088\,B vs.\ 8192\,B). This reduction arises because each doubling of $w$ groups more bits per digit, reducing the number of hash chains $\ell_1$ by a factor proportional to $\log_2 w$. However, computation cost grows linearly with $w$ (Figure~\ref{fig:ots_times}), since each chain is $w-1$ hashes long: WOTS with $w\!=\!256$ is approximately 75$\times$ slower to sign than Lamport. Note that Lamport's signing is extremely fast (0.03\,ms) because it involves no hash computation at all---only selecting and copying precomputed blocks.
-
-\begin{figure}[H]
-\centering
-\includegraphics[width=\linewidth]{benchmarks/ots_sig_size.png}
-\caption{OTS signature size vs.\ $w$. The logarithmic decrease reflects that each doubling of $w$ halves the number of base-$w$ digits needed to represent the 256-bit message hash.}
-\label{fig:ots_sig}
-\end{figure}
-
-\begin{figure}[H]
-\centering
-\includegraphics[width=\linewidth]{benchmarks/ots_times.png}
-\caption{OTS sign and verify times vs.\ $w$. The linear growth confirms that computation is dominated by the chain length $w-1$.}
-\label{fig:ots_times}
-\end{figure}
-
-\subsection{MSS Height Sweep}
-
-Table~\ref{tab:mss_height} reports MSS performance for tree heights $h = 1$ to $8$ using both Lamport and WOTS ($w\!=\!16$) as the leaf OTS.
-
-\begin{table}[H]
-\centering
-\small
-\begin{tabular}{lrcccc}
-\toprule
-\textbf{Config} & $N$ & \textbf{KG} & \textbf{Sign} & \textbf{Vrfy} & \textbf{Sig} \\
- & & (ms) & (ms) & (ms) & (B) \\
-\midrule
-$h\!=\!2$, Lamp.  & 4   & 2.49   & 0.04 & 0.27 & 24644 \\
-$h\!=\!4$, Lamp.  & 16  & 10.04  & 0.05 & 0.28 & 24708 \\
-$h\!=\!6$, Lamp.  & 64  & 41.65  & 0.05 & 0.27 & 24772 \\
-$h\!=\!8$, Lamp.  & 256 & 174.39 & 0.10 & 0.30 & 24836 \\
-\midrule
-$h\!=\!2$, WOTS   & 4   & 2.30   & 0.30 & 0.30 & 4356  \\
-$h\!=\!4$, WOTS   & 16  & 9.08   & 0.30 & 0.30 & 4420  \\
-$h\!=\!6$, WOTS   & 64  & 36.31  & 0.32 & 0.30 & 4484  \\
-$h\!=\!8$, WOTS   & 256 & 144.46 & 0.31 & 0.30 & 4548  \\
-\bottomrule
-\end{tabular}
-\caption{MSS performance vs.\ tree height ($N = 2^h$ leaves).}
-\label{tab:mss_height}
-\end{table}
-
-Three key observations emerge from Table~\ref{tab:mss_height} and Figures~\ref{fig:mss_keygen}--\ref{fig:mss_sigsize}. First, as shown in Figure~\ref{fig:mss_keygen}, KeyGen scales as $O(2^h)$: going from $h\!=\!4$ to $h\!=\!8$ increases the cost by roughly 16$\times$, confirming that the dominant expense is materializing a full OTS keypair at every leaf. Second, Sign and Verify times remain effectively constant with respect to $h$ (Figures~\ref{fig:mss_sign} and~\ref{fig:mss_verify}), because the additional $h$ hash operations for the authentication path are negligible compared to the underlying OTS work. Third, signature size grows by only 32 bytes per tree level (Figure~\ref{fig:mss_sigsize})---one SHA-256 sibling hash---meaning that doubling the signing capacity ($h \to h+1$) costs a trivial 32\,B overhead per signature. Across all heights, WOTS leaves produce roughly 5.5$\times$ smaller MSS signatures than Lamport leaves ($\sim$4.5\,KB vs.\ $\sim$24.7\,KB).
-
-\begin{figure}[H]
-\centering
-\includegraphics[width=\linewidth]{benchmarks/mss_keygen.png}
-\caption{MSS KeyGen time vs.\ tree height on a log scale. The near-perfect linear trend on the log-scale confirms the $O(2^h)$ scaling.}
-\label{fig:mss_keygen}
-\end{figure}
-
-\begin{figure}[H]
-\centering
-\includegraphics[width=\linewidth]{benchmarks/mss_sign.png}
-\caption{MSS Sign time vs.\ height. Signing remains flat regardless of tree size, as the $h$ additional hashes are negligible next to the OTS operations.}
-\label{fig:mss_sign}
-\end{figure}
-
-\begin{figure}[H]
-\centering
-\includegraphics[width=\linewidth]{benchmarks/mss_verify.png}
-\caption{MSS Verify time vs.\ height. Like signing, verification cost is dominated by the OTS check and is independent of $h$.}
-\label{fig:mss_verify}
-\end{figure}
-
-\begin{figure}[H]
-\centering
-\includegraphics[width=\linewidth]{benchmarks/mss_sig_size.png}
-\caption{MSS signature size vs.\ height. Growth is strictly linear at 32\,B per level, independent of the OTS backend choice.}
-\label{fig:mss_sigsize}
-\end{figure}
-
-\subsection{Parameter Tuning: MSS with Varying $w$}
-
-Fixing $h\!=\!4$ (16 leaves), we varied the WOTS parameter to study the size-vs-speed trade-off within the full MSS context (Table~\ref{tab:mss_w}). Going from $w\!=\!4$ to $w\!=\!256$ shrinks signatures by 3.7$\times$ (8644\,B to 2308\,B) but increases total computation (sign + verify) by 13$\times$. Figure~\ref{fig:mss_tradeoff} visualizes this Pareto frontier, showing the smooth and predictable nature of the trade-off curve. The ``knee'' of the curve sits near $w\!=\!16$, which is why real-world standards (XMSS, SPHINCS+) adopt this value.
-
-\begin{table}[H]
-\centering
-\small
-\begin{tabular}{rcccc}
-\toprule
-$w$ & \textbf{KG (ms)} & \textbf{Sign (ms)} & \textbf{Vrfy (ms)} & \textbf{Sig (B)} \\
-\midrule
-4   & 4.95  & 0.16 & 0.18 & 8644 \\
-16  & 9.09  & 0.30 & 0.30 & 4420 \\
-64  & 23.52 & 0.65 & 0.84 & 3012 \\
-256 & 70.59 & 2.26 & 2.26 & 2308 \\
-\bottomrule
-\end{tabular}
-\caption{MSS ($h\!=\!4$) performance vs.\ Winternitz parameter $w$.}
-\label{tab:mss_w}
-\end{table}
-
-\begin{figure}[H]
-\centering
-\includegraphics[width=\linewidth]{benchmarks/mss_w_tradeoff.png}
-\caption{MSS size-vs-speed trade-off at $h\!=\!4$. The knee near $w\!=\!16$ marks the practical sweet spot adopted by XMSS and SPHINCS+.}
-\label{fig:mss_tradeoff}
-\end{figure}
-
-Based on the complete sweep, Table~\ref{tab:recommendations} summarizes optimal parameter choices for four representative deployment priorities.
-
-\begin{table}[H]
-\centering
-\small
-\begin{tabular}{lcccc}
-\toprule
-\textbf{Priority} & \textbf{Config} & \textbf{Sig} & \textbf{S+V} & $N$ \\
-\midrule
-Min size    & $w\!=\!256,h\!=\!4$ & 2308\,B  & 4.52\,ms & 16  \\
-Min compute & Lamp., $h\!=\!4$    & 24708\,B & 0.33\,ms & 16  \\
-Balanced    & $w\!=\!16, h\!=\!5$ & 4452\,B  & 0.61\,ms & 32  \\
-Max msgs    & $w\!=\!16, h\!=\!8$ & 4548\,B  & 0.61\,ms & 256 \\
-\bottomrule
-\end{tabular}
-\caption{Recommended configurations for different priorities (S+V = Sign + Verify time, $N$ = max messages).}
-\label{tab:recommendations}
-\end{table}
+All benchmarks were collected on a local Linux workstation using SHA-256. Timing measurements are reported as mean $\pm$ variance over 5 independent runs to capture both the typical execution time and its stability. A single fixed string (\texttt{"Post-quantum cryptography is exciting"}) was signed repeatedly to ensure a fair, controlled comparison across all configurations.
 
 % ══════════════════════════════════════════════════════════════
-\section{Mandatory Extension: Lamport Key-Reuse Attack}
+\subsection{Lamport Key-Reuse Attack}
 
-\subsection{Threat Model and Theoretical Analysis}
+\subsubsection{Threat Model and Theoretical Analysis}
 
 A Lamport secret key comprises $256 \times 2 = 512$ blocks. Each signature reveals exactly 256 blocks (one per row, selected by the corresponding message-hash bit). After $k$ reuses with independent random messages, the probability that a \emph{specific} block remains unrevealed is $(1/2)^k$. To forge a signature on an arbitrary target, the attacker needs all 256 blocks selected by the target's hash. The forgery probability is:
 \begin{equation}
@@ -219,7 +91,7 @@ A Lamport secret key comprises $256 \times 2 = 512$ blocks. Each signature revea
 
 We verified Eq.~\eqref{eq:forge} empirically by running 200 independent trials per value of $k$, each with a fresh keypair (Table~\ref{tab:forgery}). As shown in Figure~\ref{fig:forgery}, the empirical forgery rate tracks the theoretical curve closely. After only $\sim$10 reuses, the attacker succeeds with $>$78\% probability; after 15, success is essentially certain. The attack is entirely \emph{passive}---the attacker only needs to observe legitimate signatures without any interaction with the signer.
 
-\begin{table}[H]
+\begin{table}[htbp]
 \centering
 \small
 \begin{tabular}{rccr}
@@ -240,61 +112,205 @@ $k$ & \textbf{Theoretical} & \textbf{Empirical} & \textbf{Exposed} \\
 \label{tab:forgery}
 \end{table}
 
-\begin{figure}[H]
-\centering
-\includegraphics[width=\linewidth]{benchmarks/forgery_probability.png}
-\caption{Forgery success rate vs.\ $k$. The empirical curve (200 trials per point) closely matches the theoretical prediction of Eq.~\eqref{eq:forge}, confirming the exponential convergence to certainty.}
-\label{fig:forgery}
-\end{figure}
-
 Figure~\ref{fig:bits} provides a complementary view: it plots the average fraction of the 512-block secret key exposed as a function of $k$. By $k\!=\!8$, over 99.6\% of blocks are revealed, and by $k\!=\!12$ the entire key is typically exposed. This highlights that even a small number of reuses leaks nearly all secret material.
 
-\begin{figure}[H]
+\begin{figure*}[tbp]
 \centering
-\includegraphics[width=\linewidth]{benchmarks/key_exposure.png}
-\caption{Fraction of Lamport secret-key blocks exposed vs.\ reuse count $k$. Convergence to 100\% is rapid; by $k\!=\!12$ the attacker possesses the complete secret key.}
-\label{fig:bits}
-\end{figure}
+\begin{subfigure}{0.48\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{benchmarks/forgery_probability.png}
+    \caption{Forgery success rate vs.\ $k$.}
+    \label{fig:forgery}
+\end{subfigure}
+\hfill
+\begin{subfigure}{0.48\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{benchmarks/key_exposure.png}
+    \caption{Fraction of secret-key blocks exposed vs.\ reuse count $k$.}
+    \label{fig:bits}
+\end{subfigure}
+\caption{Empirical and theoretical metrics for the Lamport key-reuse attack over $k \in \{1,\dots,20\}$ reuses (200 independent trials per configuration).}
+\label{fig:lamport_attack}
+\end{figure*}
 
-\subsection{Full Secret Key Recovery}
+\subsubsection{Full Secret Key Recovery}
 We explicitly demonstrated secret-key recovery by signing 20 random messages with the same Lamport key. All 512 blocks were recovered byte-exact, as verified against the original key. The full recovered key was exported to JSON for inspection. Once in possession of the complete secret key, the attacker can forge a valid signature on \emph{any} message.
 
-% ══════════════════════════════════════════════════════════════
-\section{Advanced Extension: Multi-Layer Merkle Trees (Hypertrees)}
-\label{sec:hypertree}
+\subsection{OTS Primitive Comparison}
 
-Section~\ref{sec:experiments} (and Figure~\ref{fig:mss_keygen} in particular) exposed the dominant practical limitation of a flat MSS: KeyGen scales as $O(2^h)$, which becomes prohibitive once we want signing capacities of $2^{16}$ or beyond. We address this by implementing a two-layer \emph{hypertree}, the same multi-layer Merkle construction used internally by SPHINCS+/SLH-DSA.
+We benchmarked Lamport OTS and WOTS across key Winternitz parameters ($w=4, 16, 64, 256$). Table~\ref{tab:ots_full} summarizes the key generation, signing, verification times, and key/signature sizes.
 
-\subsection{Construction}
-A two-layer hypertree consists of one \emph{top tree} of height $h_{\text{top}}$ whose leaves do not sign user messages directly; instead, each top-tree leaf certifies the public-key root of a \emph{bottom tree} of height $h_{\text{bot}}$. Messages are signed by a leaf of the appropriate bottom tree, and the resulting signature is bundled with the top tree's MSS signature on that bottom tree's root. The total signing capacity is $N = 2^{h_{\text{top}} + h_{\text{bot}}}$, and the published public key is the top-tree root---a single 32-byte hash that commits to all $N$ signing slots.
-
-The decisive property is that bottom trees are built \emph{lazily}: only the top tree and the first bottom tree are materialized at KeyGen time. This turns the up-front cost from $O(2^h)$ into roughly $O(2 \cdot 2^{h/2})$ when $h_{\text{top}} \approx h_{\text{bot}}$---a square-root reduction. Verification is unchanged in structure: the verifier checks both the bottom-tree MSS signature on the message and the top-tree MSS signature on the bottom-root, and ensures the bottom-tree index is consistent across the two.
-
-\subsection{Implementation and Tests}
-The construction lives in \texttt{src/hypertree.py} and is layered directly on top of our existing \texttt{MerkleSignature} class, requiring no modification to the underlying primitives. The \texttt{Hypertree} class exposes the standard \texttt{generate\_keypair}, \texttt{sign}, and \texttt{verify} interface. Five unit tests in \texttt{tests/test\_hypertree.py} confirm correctness, capacity exhaustion, and rejection of tampered messages and mismatched public keys; all five pass.
-
-\subsection{Empirical Results}
-Table~\ref{tab:hypertree} compares the two-layer hypertree against a flat MSS at matched signing capacities. WOTS ($w\!=\!16$) leaves are used throughout. Figure~\ref{fig:hypertree} visualizes the KeyGen comparison.
-
-\begin{table}[H]
+\begin{table*}[t]
 \centering
 \small
-\begin{tabular}{lrcccc}
+\begin{tabular}{lrrrrr}
+\toprule
+\textbf{Scheme} & \textbf{KG (ms)} & \textbf{Sign (ms)} & \textbf{Verify (ms)} & \textbf{Sig (B)} & \textbf{PK (B)} \\
+\midrule
+Lamport          & $0.74 \pm 0.013$ & $0.02 \pm 0.000$ & $0.13 \pm 0.002$ & 8192  & 16384 \\
+WOTS $w\!=\!4$   & $0.29 \pm 0.000$ & $0.11 \pm 0.000$ & $0.10 \pm 0.000$ & 4256  & 4256  \\
+WOTS $w\!=\!16$  & $0.40 \pm 0.000$ & $0.19 \pm 0.000$ & $0.18 \pm 0.000$ & 2144  & 2144  \\
+WOTS $w\!=\!64$  & $1.06 \pm 0.011$ & $0.43 \pm 0.000$ & $0.55 \pm 0.000$ & 1440  & 1440  \\
+WOTS $w\!=\!256$ & $3.00 \pm 0.006$ & $1.56 \pm 0.021$ & $1.56 \pm 0.014$ & 1088  & 1088  \\
+\bottomrule
+\end{tabular}
+\caption{OTS performance across Winternitz parameters. KG = KeyGen, Vrfy = Verify, Sig = signature size, PK = public key size.}
+\label{tab:ots_full}
+\end{table*}
+
+The Winternitz trade-off is clearly visible in both Table~\ref{tab:ots_full} and Figures~\ref{fig:ots_sig}--\ref{fig:ots_times}. As $w$ increases, signature size decreases logarithmically (Figure~\ref{fig:ots_sig}): WOTS with $w\!=\!256$ is 7.5$\times$ smaller than Lamport (1088\,B vs.\ 8192\,B). This reduction arises because each doubling of $w$ groups more bits per digit, reducing the number of hash chains $\ell_1$ by a factor proportional to $\log_2 w$. However, computation cost grows linearly with $w$ (Figure~\ref{fig:ots_times}), since each chain is $w-1$ hashes long: WOTS with $w\!=\!256$ is approximately 75$\times$ slower to sign than Lamport. Note that Lamport's signing is extremely fast (0.03\,ms) because it involves no hash computation at all---only selecting and copying precomputed blocks.
+
+\begin{figure*}[tbp]
+\centering
+\begin{subfigure}{0.48\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{benchmarks/ots_sig_size.png}
+    \caption{Signature size vs.\ $w$.}
+    \label{fig:ots_sig}
+\end{subfigure}
+\hfill
+\begin{subfigure}{0.48\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{benchmarks/ots_times.png}
+    \caption{Sign and verify times vs.\ $w$.}
+    \label{fig:ots_times}
+\end{subfigure}
+\caption{OTS performance and scaling trade-offs across Winternitz parameters $w \in \{4, 16, 64, 256\}$ compared to Lamport OTS. Line in (b) shows Lamport verification time (0.13 ms) and signing time (0.02 ms) for reference.}
+\label{fig:ots_plots}
+\end{figure*}
+
+\subsection{MSS Height Sweep}
+
+Table~\ref{tab:mss_height} reports MSS performance for tree heights $h = 1$ to $8$ using both Lamport and WOTS ($w\!=\!16$) as the leaf OTS.
+
+\begin{table}[htbp]
+\centering
+\small
+\resizebox{\columnwidth}{!}{%
+\begin{tabular}{lrrcr}
+\toprule
+\textbf{Config} & $N$ & \textbf{KG (ms)} & \textbf{Sign (ms)} & \textbf{Sig (B)} \\
+\midrule
+$h\!=\!4$, Lamp.  & 16  & $11.96 \pm 0.01$  & $0.03 \pm 0.00$ & 24640 \\
+$h\!=\!6$, Lamp.  & 64  & $48.73 \pm 0.71$  & $0.04 \pm 0.00$ & 24704 \\
+$h\!=\!8$, Lamp.  & 256 & $196.28 \pm 10.19$ & $0.06 \pm 0.00$ & 24768 \\
+\midrule
+$h\!=\!4$, WOTS   & 16  & $7.11 \pm 0.03$   & $0.21 \pm 0.00$ & 4420  \\
+$h\!=\!6$, WOTS   & 64  & $27.99 \pm 0.17$  & $0.22 \pm 0.00$ & 4484  \\
+$h\!=\!8$, WOTS   & 256 & $112.17 \pm 1.13$ & $0.23 \pm 0.00$ & 4548  \\
+\bottomrule
+\end{tabular}%
+}
+\caption{MSS performance vs.\ tree height ($N = 2^h$ leaves).}
+\label{tab:mss_height}
+\end{table}
+
+Three key observations emerge from Table~\ref{tab:mss_height} and Figures~\ref{fig:mss_keygen}--\ref{fig:mss_sigsize}. First, as shown in Figure~\ref{fig:mss_keygen}, KeyGen scales as $O(2^h)$: going from $h\!=\!4$ to $h\!=\!8$ increases the cost by roughly 16$\times$, confirming that the dominant expense is materializing a full OTS keypair at every leaf. Second, Sign times remain effectively constant with respect to $h$ (Figure~\ref{fig:mss_sign}), because the additional $h$ hash operations for the authentication path are negligible compared to the underlying OTS work. Verify times exhibit the exact same constant scaling (Figure~\ref{fig:mss_verify}). Third, signature size grows by only 32 bytes per tree level (Figure~\ref{fig:mss_sigsize})---one SHA-256 sibling hash---meaning that doubling the signing capacity ($h \to h+1$) costs a trivial 32\,B overhead per signature. Across all heights, WOTS leaves produce roughly 5.5$\times$ smaller MSS signatures than Lamport leaves ($\sim$4.5\,KB vs.\ $\sim$24.7\,KB).
+
+\begin{figure*}[tbp]
+\centering
+\begin{subfigure}{0.48\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{benchmarks/mss_keygen.png}
+    \caption{MSS KeyGen time vs.\ tree height on a log scale.}
+    \label{fig:mss_keygen}
+\end{subfigure}
+\hfill
+\begin{subfigure}{0.48\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{benchmarks/mss_sign.png}
+    \caption{MSS Sign time vs.\ height.}
+    \label{fig:mss_sign}
+\end{subfigure}
+
+\vspace{1em}
+
+\begin{subfigure}{0.48\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{benchmarks/mss_verify.png}
+    \caption{MSS Verify time vs.\ height.}
+    \label{fig:mss_verify}
+\end{subfigure}
+\hfill
+\begin{subfigure}{0.48\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{benchmarks/mss_sig_size.png}
+    \caption{MSS signature size vs.\ height.}
+    \label{fig:mss_sigsize}
+\end{subfigure}
+\caption{MSS performance metrics across tree heights $h \in \{1,\dots,8\}$ for both Lamport and WOTS ($w=16$) leaf backends.}
+\label{fig:mss_height_sweep}
+\end{figure*}
+
+\subsection{Parameter Tuning: MSS with Varying $w$}
+
+Fixing $h\!=\!4$ (16 leaves), we varied the WOTS parameter to study the size-vs-speed trade-off within the full MSS context (Table~\ref{tab:mss_w}). Going from $w\!=\!4$ to $w\!=\!256$ shrinks signatures by 3.7$\times$ (8644\,B to 2308\,B) but increases total computation (sign + verify) by 13$\times$. Figure~\ref{fig:mss_tradeoff} visualizes this Pareto frontier, showing the smooth and predictable nature of the trade-off curve. The ``knee'' of the curve sits near $w\!=\!16$, which is why real-world standards (XMSS, SPHINCS+) adopt this value.
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabular}{rcccc}
+\toprule
+$w$ & \textbf{KG (ms)} & \textbf{Sign (ms)} & \textbf{Vrfy (ms)} & \textbf{Sig (B)} \\
+\midrule
+4   & 4.95  & 0.16 & 0.18 & 8644 \\
+16  & 9.09  & 0.30 & 0.30 & 4420 \\
+64  & 23.52 & 0.65 & 0.84 & 3012 \\
+256 & 70.59 & 2.26 & 2.26 & 2308 \\
+\bottomrule
+\end{tabular}
+\caption{MSS ($h\!=\!4$) performance vs.\ Winternitz parameter $w$.}
+\label{tab:mss_w}
+\end{table}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\linewidth]{benchmarks/mss_w_tradeoff.png}
+\caption{MSS size-vs-speed trade-off at $h\!=\!4$. The knee near $w\!=\!16$ marks the practical sweet spot adopted by XMSS and SPHINCS+.}
+\label{fig:mss_tradeoff}
+\end{figure}
+
+Based on the complete sweep, Table~\ref{tab:recommendations} summarizes optimal parameter choices for four representative deployment priorities.
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Priority} & \textbf{Config} & \textbf{Sig} & \textbf{S+V} & $N$ \\
+\midrule
+Min size    & $w\!=\!256,h\!=\!4$ & 2308\,B  & 4.52\,ms & 16  \\
+Min compute & Lamp., $h\!=\!4$    & 24708\,B & 0.33\,ms & 16  \\
+Balanced    & $w\!=\!16, h\!=\!5$ & 4452\,B  & 0.61\,ms & 32  \\
+Max msgs    & $w\!=\!16, h\!=\!8$ & 4548\,B  & 0.61\,ms & 256 \\
+\bottomrule
+\end{tabular}
+\caption{Recommended configurations for different priorities (S+V = Sign + Verify time, $N$ = max messages).}
+\label{tab:recommendations}
+\end{table}
+
+\subsection{Hypertree Performance}
+Table~\ref{tab:hypertree} compares the two-layer hypertree against a flat MSS at matched signing capacities. WOTS ($w\!=\!16$) leaves are used throughout. Figure~\ref{fig:hypertree} visualizes the KeyGen comparison.
+
+\begin{table*}[t]
+\centering
+\small
+\begin{tabular}{lrrccr}
 \toprule
 \textbf{Scheme} & $N$ & \textbf{KG (ms)} & \textbf{Sign (ms)} & \textbf{Vrfy (ms)} & \textbf{Sig (B)} \\
 \midrule
-Flat MSS, $h\!=\!8$           & 256  & 111.1 & 0.20 & 0.23 & 4548 \\
-Hypertree, $h_t\!=\!h_b\!=\!4$ & 256  & 13.5  & 0.17 & 0.60 & 8876 \\
+Flat MSS, $h\!=\!8$           & 256  & $110.7 \pm 0.6$  & 0.20 & 0.23 & 4548 \\
+Hypertree, $h_t\!=\!h_b\!=\!4$ & 256  & $13.8 \pm 0.01$  & 0.17 & 0.60 & 8876 \\
 \midrule
-Flat MSS, $h\!=\!10$          & 1024 & 443.7 & 0.20 & 0.24 & 4612 \\
-Hypertree, $h_t\!=\!h_b\!=\!5$ & 1024 & 28.5  & 0.19 & 0.43 & 8940 \\
+Flat MSS, $h\!=\!10$          & 1024 & $444.9 \pm 4.7$  & 0.20 & 0.24 & 4612 \\
+Hypertree, $h_t\!=\!h_b\!=\!5$ & 1024 & $27.4 \pm 0.4$   & 0.19 & 0.43 & 8940 \\
 \bottomrule
 \end{tabular}
 \caption{Hypertree vs flat MSS at matched signing capacities. KG = initial KeyGen time.}
 \label{tab:hypertree}
-\end{table}
+\end{table*}
 
-\begin{figure}[H]
+\begin{figure}[htbp]
 \centering
 \includegraphics[width=\linewidth]{benchmarks/hypertree_keygen.png}
 \caption{Initial KeyGen time: flat MSS vs 2-layer hypertree at matched signing capacities. The hypertree is 8.2$\times$ faster at $N\!=\!256$ and 15.6$\times$ faster at $N\!=\!1024$, confirming the predicted $O(\sqrt{N})$ behavior.}

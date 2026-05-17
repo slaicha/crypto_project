@@ -66,7 +66,7 @@
 \end{frame}
 
 % ====================================================================
-% PART 1 --- AICHA
+% PART 1
 % ====================================================================
 \section{Theory \& Implementation}
 
@@ -279,7 +279,7 @@ One chain signs \textbf{one digit} $d \in \{0,1,2,3\}$. The position along the c
 \vspace{2pt}
 The message hash is split into many digits --- and \textbf{each digit gets its own chain}. With $w\!=\!16$, that is 67 chains side by side.
 
-\vspace{6pt}
+\vspace{1pt}
 \centering
 \begin{tikzpicture}[
     node distance=1.2cm and 1.5cm,
@@ -310,9 +310,9 @@ The message hash is split into many digits --- and \textbf{each digit gets its o
   {\textbf{Signature} = the middle value of each chain, one per digit.};
 \end{tikzpicture}
 
-\vspace{4pt}
+\vspace{1pt}
 \begin{block}{In one sentence}
-\small To sign a message: split its hash into digits, and from each chain reveal the value at that digit's position. The verifier finishes every chain and checks all 67 ends match the public key.
+\footnotesize To sign a message: split its hash into digits, and from each chain reveal the value at that digit's position. The verifier finishes every chain and checks all 67 ends match the public key. \textbf{(67 = 64 for 256-bit hash + 3 for checksum)}
 \end{block}
 \end{frame}
 
@@ -547,6 +547,62 @@ Verify: $H(H(L_0 \| L_1) \| H_{23}) = \text{Root}$
 \node[font=\tiny, text=accent] at (1,1.5) {Built now};
 \node[font=\tiny, text=gray!60!black] at (3,1.5) {Built lazily};
 \end{tikzpicture}
+\end{column}
+\end{columns}
+\end{frame}
+
+% ---- Slide: Hypertrees (The Lazy Link) ----
+\begin{frame}{Hypertrees: The Lazy Link}
+\textbf{Question:} How is the top tree built if the bottom roots don't exist yet?
+
+\vspace{6pt}
+\begin{columns}
+\begin{column}{0.55\textwidth}
+\begin{enumerate}
+    \item \textbf{Top Tree (Immediate):} 
+    \begin{itemize}
+        \item Generated from a secret seed.
+        \item The leaves are just hashes of \textbf{Top OTS Public Keys}. 
+        \item Does \alert{not} contain the bottom root.
+    \end{itemize}
+    \vspace{6pt}
+    \item \textbf{Bottom Tree (Lazy):}
+    \begin{itemize}
+        \item Built only when signing a message.
+        \item Hashes up to a single \textbf{Bottom Root}.
+    \end{itemize}
+    \vspace{6pt}
+    \item \textbf{The Link:}
+    \begin{itemize}
+        \item The Bottom Root is \textbf{signed} by the corresponding Top OTS Secret Key.
+    \end{itemize}
+\end{enumerate}
+\end{column}
+
+\begin{column}{0.45\textwidth}
+\centering
+\begin{tikzpicture}[
+    box/.style={draw, rounded corners, minimum width=2.4cm, minimum height=0.6cm, align=center, font=\scriptsize},
+    >=Stealth
+]
+\node[box, fill=success!20] (topleaf) at (0, 3) {Top Tree Leaf};
+\node[box, fill=accent!20] (toppk) at (0, 1.8) {Top OTS PK};
+\node[box, fill=danger!20] (topsk) at (0, 0.4) {Top OTS SK};
+
+\node[box, fill=gray!20] (botroot) at (2.8, 0.4) {Bottom Root};
+
+\draw[->, thick] (toppk) -- (topleaf) node[midway, right, font=\tiny] {$H$};
+\draw[->, thick, dashed] (topsk) -- (toppk) node[midway, right, font=\tiny] {Derives};
+\draw[->, thick, accent, line width=1pt] (topsk) -- (botroot) node[midway, above, font=\scriptsize\bfseries] {Signs};
+
+\node[font=\tiny, text=danger, below=0.1cm of topsk, align=center] {Generated\\immediately};
+\node[font=\tiny, text=gray!80!black, below=0.1cm of botroot, align=center] {Computed\\lazily};
+\end{tikzpicture}
+
+\vspace{12pt}
+\begin{block}{Verification}
+\scriptsize The verifier checks the signature against the Top OTS PK, hashes it to find the Top Leaf, then climbs the top tree.
+\end{block}
 \end{column}
 \end{columns}
 \end{frame}

@@ -1,61 +1,16 @@
 """
 Hypertree Signature Scheme — multi-layer Merkle aggregation.
 
-Problem solved:
-    A single Merkle tree of height h supports 2^h signatures, but KeyGen
-    cost grows as O(2^h) because we must materialize every leaf upfront.
-    For h = 16 (~65k signatures) this becomes minutes; for h = 20 (~1M
-    signatures) it becomes hours. Our own benchmarks confirm this.
-
-How a 2-layer hypertree fixes it:
-    Use a TOP tree of height h_top whose leaves do NOT sign messages
-    directly. Instead, each top-tree leaf "certifies" the public-key root
-    of a BOTTOM tree of height h_bot. Messages are signed by the bottom
-    tree, and the resulting signature is bundled with the top tree's
-    certification of that bottom tree's root.
-
-    Total signing capacity: 2^h_top * 2^h_bot = 2^(h_top + h_bot).
-    KeyGen capacity boost: instead of O(2^h) up front, we only materialize
-    the top tree (2^h_top leaves) plus ONE bottom tree on demand. With
-    h_top = h_bot = h/2, that is roughly O(2 * 2^(h/2)) — a square-root
-    speedup that turns hours into seconds.
-
-Why this is the right Week-4 extension:
-    - Plugs directly into the MerkleSignature class we already built.
-    - Solves a problem our own Week-3 KeyGen plot exposes (O(2^h) blow-up).
-    - This is exactly the construction SPHINCS+ / SLH-DSA uses internally.
-
-Trade-offs:
-    + KeyGen amortizes nicely (only top tree + first bottom tree upfront).
-    + Same one-message-per-bottom-leaf safety as plain MSS.
-    - Signature size doubles (we now carry two MSS signatures and two
-      OTS public keys) — but it stays O(h_top + h_bot) hashes total.
-    - Bottom trees must be regenerated when their leaves are exhausted.
-      This is why real schemes (SPHINCS+) make leaf selection stateless,
-      but for our 2-layer demonstration we keep it simple and stateful.
+Uses a top tree to certify bottom trees, lazily building bottom trees
+on demand. This square-root reduction turns KeyGen time from O(2^h)
+to O(2 * 2^(h/2)).
 """
 
 from src.merkle import MerkleSignature
 
 
 class Hypertree:
-    """
-    Two-layer hypertree built on top of MerkleSignature.
-
-    Parameters
-    ----------
-    h_top : int
-        Height of the top tree. Number of bottom trees = 2^h_top.
-    h_bot : int
-        Height of each bottom tree. Each bottom tree signs 2^h_bot messages.
-    ots_scheme : str
-        Which one-time signature to use at the bottom-tree leaves
-        ("lamport" or "wots").
-    w : int
-        Winternitz parameter, only used when ots_scheme == "wots".
-
-    Total signing capacity: 2^(h_top + h_bot) messages.
-    """
+    """Two-layer hypertree built on top of MerkleSignature."""
 
     def __init__(self, h_top=4, h_bot=4, ots_scheme="wots", w=16):
         if h_top < 1 or h_bot < 1:
@@ -72,25 +27,7 @@ class Hypertree:
     # Key generation
     # ------------------------------------------------------------------ #
     def generate_keypair(self):
-        """
-        Build the hypertree:
-            1. Generate the TOP tree's keypair using MerkleSignature.
-               Its leaves are independent OTS keypairs whose public keys
-               will be used to sign bottom-tree roots.
-            2. Generate the FIRST bottom tree (lazily) so we can start
-               signing immediately. Subsequent bottom trees are created
-               on demand inside sign().
-
-        Returns
-        -------
-        secret_key : dict
-            Holds the top-tree secret key, a list of bottom-tree slots
-            (most starting as None and built lazily), and a global
-            "next_index" counter for which message slot to use next.
-        public_key : bytes
-            The TOP tree's Merkle root — a single 32-byte hash that
-            commits to all 2^(h_top + h_bot) signing slots.
-        """
+        """Generates the hypertree keypair."""
         # 1) Top tree: each top leaf will sign one bottom-tree's root.
         top = MerkleSignature(height=self.h_top, ots_scheme=self.ots_scheme, w=self.w)
         top_sk, top_root = top.generate_keypair()
@@ -121,11 +58,7 @@ class Hypertree:
     # Internal: build one bottom tree and have the top tree certify it
     # ------------------------------------------------------------------ #
     def _build_bottom(self, top, top_sk, bottom_index):
-        """
-        Generate a fresh bottom-tree keypair, then have the top tree sign
-        its root. The top-tree signature acts as a certificate that this
-        bottom-tree root is part of the overall hypertree.
-        """
+        """Generates a bottom-tree keypair and has the top tree sign its root."""
         bottom = MerkleSignature(
             height=self.h_bot, ots_scheme=self.ots_scheme, w=self.w
         )
@@ -141,23 +74,7 @@ class Hypertree:
     # Signing
     # ------------------------------------------------------------------ #
     def sign(self, message, secret_key):
-        """
-        Sign a message using the next available slot.
-
-        Layout of a global signature index `idx` (h_top + h_bot bits):
-            high h_top bits → which BOTTOM TREE
-            low  h_bot bits → which LEAF in that bottom tree
-
-        If we move into a bottom tree that has not been built yet,
-        we materialize it on demand (this is the lazy KeyGen win).
-
-        The returned hypertree signature contains:
-            - bottom_index           : which bottom tree was used
-            - bottom_signature       : the MSS signature on `message`
-            - bottom_root            : the public key (root) of that bottom tree
-            - top_signature_on_root  : the top tree's MSS signature certifying
-                                       that bottom_root is part of this hypertree
-        """
+        """Signs a message using the next available slot."""
         idx = secret_key["next_index"]
         if idx >= self.total_capacity:
             raise RuntimeError(
@@ -201,25 +118,7 @@ class Hypertree:
     # Verification
     # ------------------------------------------------------------------ #
     def verify(self, message, signature, public_key):
-        """
-        Verify a hypertree signature.
-
-        Three independent checks must all pass:
-
-        Check (1) — Bottom-layer signature:
-            The bottom tree's MSS signature must validate `message` under
-            its bottom_root.
-
-        Check (2) — Top-layer certification:
-            The top tree's MSS signature must validate `bottom_root` under
-            the hypertree's top_public_key (which is the published public key).
-
-        Check (3) — Leaf-index consistency:
-            The bottom_signature's leaf index must lie within the bottom tree,
-            and the top_signature's leaf index must equal bottom_index.
-            (This prevents an attacker from re-mixing valid pieces from
-            different positions of the hypertree.)
-        """
+        """Verifies a hypertree signature against the global public key."""
         bottom_index = signature["bottom_index"]
         if bottom_index < 0 or bottom_index >= self.num_bottom_trees:
             return False

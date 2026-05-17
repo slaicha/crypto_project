@@ -1,31 +1,4 @@
-"""
-Merkle Signature Scheme (MSS) — lifts the one-time restriction.
-
-Problem solved:
-    Lamport and WOTS are ONE-TIME signature schemes: using a secret key
-    more than once leaks secret material and enables forgery.
-    The Merkle tree lets us aggregate many OTS keypairs under a single,
-    reusable public key (the tree's root hash).
-
-How it works:
-    1. Choose a tree height h → the scheme can sign N = 2^h messages.
-    2. Generate N independent OTS keypairs (Lamport or WOTS).
-    3. Each leaf = H(OTS_public_key_i).
-    4. Internal nodes = H(left_child || right_child).
-    5. The MSS public key = the tree root (a single 32-byte hash).
-    6. To sign the i-th message:
-       - Sign with OTS keypair i
-       - Include the "authentication path": h sibling hashes from leaf to root
-    7. The verifier:
-       - Verifies the OTS signature
-       - Reconstructs the root using the auth path
-       - Checks that the reconstructed root == the published public key
-
-Key trade-off:
-    - KeyGen is expensive: O(2^h) OTS keypairs must be generated upfront.
-    - Sign/Verify are cheap: one OTS operation + h hashes (negligible).
-    - Signature size grows by only 32 bytes per tree level.
-"""
+"""Merkle Signature Scheme (MSS)."""
 
 from src.utils import get_hash
 from src.lamport import LamportOTS
@@ -33,15 +6,7 @@ from src.wots import WOTS
 
 
 def _serialize_ots_public_key(ots_pk):
-    """
-    Flatten an OTS public key into raw bytes so it can be hashed into a leaf.
-
-    - Lamport public keys are lists of (pk_0, pk_1) tuples of 32-byte hashes.
-    - WOTS public keys are flat lists of 32-byte hashes.
-
-    We concatenate all the bytes in order. The exact layout does not matter for
-    security as long as the signer and verifier agree on it.
-    """
+    """Flatten an OTS public key into raw bytes so it can be hashed into a leaf."""
     buf = b"" #initialize an empty byte string to store the serialized public key
     for item in ots_pk:
         if isinstance(item, tuple):           # Lamport: (pk_0, pk_1)
@@ -62,18 +27,7 @@ def _parent_hash(left, right):
 
 
 class MerkleSignature:
-    """
-    Merkle Signature Scheme built on top of a one-time signature (OTS) primitive.
-
-    Parameters
-    ----------
-    height : int
-        Tree height. The scheme can sign up to 2**height messages.
-    ots_scheme : str
-        Which one-time signature to use at the leaves: "lamport" or "wots".
-    w : int
-        Winternitz parameter, only used when ots_scheme == "wots".
-    """
+    """Merkle Signature Scheme built on top of a one-time signature (OTS) primitive."""
 
     def __init__(self, height=4, ots_scheme="lamport", w=16):
         if height < 1:
@@ -99,23 +53,7 @@ class MerkleSignature:
     # Key generation
     # ------------------------------------------------------------------ #
     def generate_keypair(self):
-        """
-        Generate an MSS keypair.
-
-        Steps:
-            1. Generate 2^h independent OTS keypairs (the dominant cost).
-            2. Hash each OTS public key → leaf node.
-            3. Build the binary hash tree bottom-up:
-               parent = H(left_child || right_child)
-            4. The root of the tree is the MSS public key.
-
-        Returns
-        -------
-        secret_key : dict
-            Contains all OTS keys, the full tree, and a leaf counter.
-        public_key : bytes
-            The Merkle root (32 bytes for SHA-256).
-        """
+        """Generates an MSS keypair."""
         ots = self._new_ots()
 
         # Step 1: generate one OTS keypair per leaf
@@ -154,17 +92,7 @@ class MerkleSignature:
     # Authentication path
     # ------------------------------------------------------------------ #
     def _auth_path(self, tree, leaf_index):
-        """
-        Compute the authentication path for the given leaf.
-
-        The auth path is the list of SIBLING hashes needed to reconstruct
-        the root from the leaf. One sibling per tree level (length = h).
-
-        Example for h=3, leaf_index=5 (binary: 101):
-            Level 0: sibling of node 5 is node 4  (flip last bit: 5^1=4)
-            Level 1: sibling of node 2 is node 3  (5>>1=2, 2^1=3)
-            Level 2: sibling of node 1 is node 0  (2>>1=1, 1^1=0)
-        """
+        """Computes the authentication path for the given leaf."""
         path = []
         index = leaf_index
         # Walk up from leaves (level 0) to just below the root
@@ -178,21 +106,7 @@ class MerkleSignature:
     # Signing
     # ------------------------------------------------------------------ #
     def sign(self, message, secret_key):
-        """
-        Sign a message using the next unused leaf.
-
-        The signature contains four parts:
-            1. leaf_index    — which leaf was used (so verifier knows the path)
-            2. ots_public_key — the OTS public key at this leaf
-            3. ots_signature  — the one-time signature of the message
-            4. auth_path      — h sibling hashes from leaf to root
-
-        State management:
-            next_leaf is incremented after each signing to ensure no leaf
-            is ever reused. Once all 2^h leaves are exhausted, signing
-            raises a RuntimeError. This stateful tracking is what prevents
-            the key-reuse vulnerability demonstrated in security_simulation.py.
-        """
+        """Signs a message using the next unused leaf."""
         idx = secret_key["next_leaf"]
         if idx >= self.num_leaves:
             raise RuntimeError(
@@ -217,33 +131,7 @@ class MerkleSignature:
     # Verification
     # ------------------------------------------------------------------ #
     def verify(self, message, signature, public_key):
-        """
-        Verify an MSS signature against the root (public_key).
-
-        Two independent checks must BOTH pass:
-
-        Check (a) — OTS validity:
-            Verify that the one-time signature is valid for the given
-            OTS public key. This confirms the message was actually signed.
-
-        Check (b) — Tree membership:
-            Hash the OTS public key into a leaf, then walk UP the tree
-            using the authentication path, combining with siblings at
-            each level. If the reconstructed root matches the published
-            public key, the leaf is authentic.
-
-            Walk-up logic:
-                If current index is EVEN → current node is LEFT child
-                    parent = H(node || sibling)
-                If current index is ODD  → current node is RIGHT child
-                    parent = H(sibling || node)
-
-        Why both checks are needed:
-            (a) alone doesn't prove the OTS key belongs to this tree.
-            (b) alone doesn't prove the message was signed correctly.
-            Together, they guarantee: "this message was signed by a key
-            that is part of the Merkle tree whose root I trust."
-        """
+        """Verifies an MSS signature against the root (public_key)."""
         idx = signature["leaf_index"]
         if idx < 0 or idx >= self.num_leaves:
             return False

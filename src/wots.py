@@ -1,60 +1,22 @@
-"""
-Winternitz One-Time Signature (WOTS) scheme.
-
-Key idea (compared to Lamport):
-    Instead of signing one bit at a time (Lamport), WOTS groups the hash
-    into base-w digits and uses iterated hash chains. This dramatically
-    reduces signature size at the cost of more hash computations.
-
-    Example: with w=16, each digit encodes 4 bits (log2(16) = 4),
-    so 256 bits need only 64 chains instead of Lamport's 256 pairs.
-
-The checksum:
-    Without a checksum, an attacker who sees a signature could forge a
-    new one by INCREASING hash chain values (applying more hashes).
-    The checksum prevents this: if any message digit decreases, the
-    checksum digits must increase, which requires computing MORE hashes
-    from the secret key — something only the signer can do.
-
-Security assumption:
-    Same as Lamport — preimage resistance of SHA-256.
-"""
+"""Winternitz One-Time Signature (WOTS) scheme."""
 
 import math
 from src.utils import get_hash, hash_n, generate_random_bytes
 
 class WOTS:
-    """
-    Implements the Winternitz One-Time Signature (WOTS) scheme.
-    """
+    """Implements the Winternitz One-Time Signature (WOTS) scheme."""
     def __init__(self, w=16):
         self.w = w
         self.log_w = int(math.log2(w))   # Bits per digit (e.g., 4 for w=16)
         self.block_size = 32              # 32 bytes for SHA-256 output
         
-        # --- Parameter computation (RFC 8391 / WOTS+ standard) ---
-        # l1: number of chains for the message digits
-        #     We need ceil(256 / log2(w)) digits to represent a 256-bit hash
-        m = 256  # SHA-256 output length in bits
+        m = 256
         self.l1 = math.ceil(m / self.log_w)
-        
-        # l2: number of chains for the checksum
-        #     The maximum checksum value is l1 * (w-1), so we need enough
-        #     base-w digits to represent it
         self.l2 = math.floor(math.log2(self.l1 * (w - 1)) / self.log_w) + 1
-        
-        # l = l1 + l2: total number of hash chains
-        # This determines the signature size = l × 32 bytes
         self.l = self.l1 + self.l2
 
     def _get_message_digits(self, message_hash):
-        """
-        Splits the 256-bit message hash into l1 base-w digits.
-
-        Example (w=16, log_w=4):
-            Each byte → 2 digits (4 bits each)
-            32 bytes → 64 digits  (= l1 = ceil(256/4))
-        """
+        """Splits the 256-bit message hash into l1 base-w digits."""
         digits = []
         # Convert hash bytes into a continuous bitstream
         bitstream = ""
@@ -68,18 +30,7 @@ class WOTS:
         return digits
 
     def _get_checksum_digits(self, message_digits):
-        """
-        Computes the checksum and encodes it as l2 base-w digits.
-
-        Checksum = sum(w - 1 - d_i) for all message digits d_i.
-
-        Why this works:
-            If an attacker tries to DECREASE a message digit (to forge a
-            different message), the checksum INCREASES. But increasing a
-            checksum digit means applying MORE hashes from the secret block,
-            which requires knowledge of the secret key. This makes forgery
-            infeasible.
-        """
+        """Computes the checksum and encodes it as l2 base-w digits."""
         checksum = 0
         for d in message_digits:
             checksum += (self.w - 1 - d)
@@ -95,30 +46,14 @@ class WOTS:
         return checksum_digits[::-1]
 
     def generate_keypair(self):
-        """
-        Generates a WOTS keypair.
-
-        Secret Key: l random 32-byte blocks (one per chain).
-        Public Key: PK[i] = H^{w-1}(SK[i])  — the END of each hash chain.
-
-        Each chain is w-1 hashes long. Larger w → longer chains → slower
-        keygen, but fewer chains → smaller signatures.
-        """
+        """Generates a WOTS keypair."""
         secret_key = [generate_random_bytes(self.block_size) for _ in range(self.l)]
         # Each public key element is the secret hashed (w-1) times
         public_key = [hash_n(sk, self.w - 1) for sk in secret_key]
         return secret_key, public_key
 
     def sign(self, message, secret_key):
-        """
-        Signs a message using WOTS.
-
-        For each chain i with digit d_i:
-            sig[i] = H^{d_i}(SK[i])  — hash the secret d_i times.
-
-        The signature reveals an intermediate point on each hash chain.
-        The verifier can then hash forward (w-1-d_i) more times to reach PK[i].
-        """
+        """Signs a message using WOTS."""
         msg_hash = get_hash(message)
         msg_digits = self._get_message_digits(msg_hash)
         checksum_digits = self._get_checksum_digits(msg_digits)
@@ -133,19 +68,7 @@ class WOTS:
         return signature
 
     def verify(self, message, signature, public_key):
-        """
-        Verifies a WOTS signature.
-
-        For each chain i with digit d_i:
-            Compute H^{w-1-d_i}(sig[i])  — hash the signature forward
-            to the end of the chain.
-            Check that it equals PK[i].
-
-        This works because:
-            H^{w-1-d_i}(sig[i]) = H^{w-1-d_i}(H^{d_i}(SK[i]))
-                                 = H^{w-1}(SK[i])
-                                 = PK[i]  ✓
-        """
+        """Verifies a WOTS signature."""
         if len(signature) != self.l:
             return False
             
