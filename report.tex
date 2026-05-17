@@ -118,14 +118,14 @@ Figure~\ref{fig:bits} provides a complementary view: it plots the average fracti
 
 \begin{figure*}[tbp]
 \centering
-\begin{subfigure}{0.48\textwidth}
+\begin{subfigure}{0.42\textwidth}
     \centering
     \includegraphics[width=\linewidth]{benchmarks/forgery_probability.png}
     \caption{Forgery success rate vs.\ $k$.}
     \label{fig:forgery}
 \end{subfigure}
 \hfill
-\begin{subfigure}{0.48\textwidth}
+\begin{subfigure}{0.42\textwidth}
     \centering
     \includegraphics[width=\linewidth]{benchmarks/key_exposure.png}
     \caption{Fraction of secret-key blocks exposed vs.\ reuse count $k$.}
@@ -164,14 +164,14 @@ The Winternitz trade-off is clearly visible in both Table~\ref{tab:ots_full} and
 
 \begin{figure*}[tbp]
 \centering
-\begin{subfigure}{0.48\textwidth}
+\begin{subfigure}{0.42\textwidth}
     \centering
     \includegraphics[width=\linewidth]{benchmarks/ots_sig_size.png}
     \caption{Signature size vs.\ $w$.}
     \label{fig:ots_sig}
 \end{subfigure}
 \hfill
-\begin{subfigure}{0.48\textwidth}
+\begin{subfigure}{0.42\textwidth}
     \centering
     \includegraphics[width=\linewidth]{benchmarks/ots_times.png}
     \caption{Sign and verify times vs.\ $w$.}
@@ -211,30 +211,30 @@ Three key observations emerge from Table~\ref{tab:mss_height} and Figures~\ref{f
 
 \begin{figure*}[tbp]
 \centering
-\begin{subfigure}{0.48\textwidth}
+\begin{subfigure}{0.42\textwidth}
     \centering
     \includegraphics[width=\linewidth]{benchmarks/mss_keygen.png}
     \caption{MSS KeyGen time vs.\ tree height on a log scale.}
     \label{fig:mss_keygen}
 \end{subfigure}
 \hfill
-\begin{subfigure}{0.48\textwidth}
+\begin{subfigure}{0.42\textwidth}
     \centering
     \includegraphics[width=\linewidth]{benchmarks/mss_sign.png}
     \caption{MSS Sign time vs.\ height.}
     \label{fig:mss_sign}
 \end{subfigure}
 
-\vspace{1em}
+\vspace{0.5em}
 
-\begin{subfigure}{0.48\textwidth}
+\begin{subfigure}{0.42\textwidth}
     \centering
     \includegraphics[width=\linewidth]{benchmarks/mss_verify.png}
     \caption{MSS Verify time vs.\ height.}
     \label{fig:mss_verify}
 \end{subfigure}
 \hfill
-\begin{subfigure}{0.48\textwidth}
+\begin{subfigure}{0.42\textwidth}
     \centering
     \includegraphics[width=\linewidth]{benchmarks/mss_sig_size.png}
     \caption{MSS signature size vs.\ height.}
@@ -267,7 +267,7 @@ $w$ & \textbf{KG (ms)} & \textbf{Sign (ms)} & \textbf{Vrfy (ms)} & \textbf{Sig (
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=\linewidth]{benchmarks/mss_w_tradeoff.png}
+\includegraphics[width=0.82\linewidth]{benchmarks/mss_w_tradeoff.png}
 \caption{MSS size-vs-speed trade-off at $h\!=\!4$. The knee near $w\!=\!16$ marks the practical sweet spot adopted by XMSS and SPHINCS+.}
 \label{fig:mss_tradeoff}
 \end{figure}
@@ -314,7 +314,7 @@ Hypertree, $h_t\!=\!h_b\!=\!5$ & 1024 & $27.4 \pm 0.4$   & 0.19 & 0.43 & 8940 \\
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=\linewidth]{benchmarks/hypertree_keygen.png}
+\includegraphics[width=0.82\linewidth]{benchmarks/hypertree_keygen.png}
 \caption{Initial KeyGen time: flat MSS vs 2-layer hypertree at matched signing capacities. The hypertree is 8.0$\times$ faster at $N\!=\!256$ and 16.2$\times$ faster at $N\!=\!1024$, consistent with the predicted $O(\sqrt{N})$ reduction.}
 \label{fig:hypertree}
 \end{figure}
