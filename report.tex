@@ -32,7 +32,9 @@
 % ══════════════════════════════════════════════════════════════
 \begin{abstract}
 \noindent
-We design, implement, and evaluate a complete hash-based digital signature system in Python. Starting from the foundational Lamport One-Time Signature (OTS) scheme, we progress through Winternitz OTS (WOTS) and culminate in a full Merkle Signature Scheme (MSS) that lifts the one-time restriction. We conduct systematic benchmarks across a wide parameter space---varying the Winternitz parameter $w \in \{4,\dots,256\}$ and tree heights $h \in \{1,\dots,8\}$---to quantify the signature-size versus computation-time trade-off. We demonstrate the critical key-reuse vulnerability of Lamport signatures through a quantitative attack simulation, recovering the full 512-block secret key after only 20 reuses and validating the theoretical forgery probability $(1-2^{-k})^{256}$ against empirical data across 200 independent trials per configuration. Finally, we extend the construction to a two-layer \emph{hypertree}, the same multi-layer Merkle aggregation idea used internally by SPHINCS+/SLH-DSA, and show that it reduces initial KeyGen time by an order of magnitude at matched signing capacity (e.g., 8$\times$ faster at $N\!=\!256$ and 16$\times$ faster at $N\!=\!1024$).
+We design, implement, and evaluate a complete hash-based digital signature system in Python. Starting from the foundational Lamport One-Time Signature (OTS) scheme, we progress through Winternitz OTS (WOTS) and culminate in a full Merkle Signature Scheme (MSS) that lifts the one-time restriction.
+
+We conduct systematic benchmarks across a wide parameter space---varying the Winternitz parameter $w \in \{4,\dots,256\}$ and tree heights $h \in \{1,\dots,8\}$---to quantify the signature-size versus computation-time trade-off. We demonstrate the critical key-reuse vulnerability of Lamport signatures through a quantitative attack simulation, recovering the full 512-block secret key after only 20 reuses and validating the theoretical forgery probability $(1-2^{-k})^{256}$ against empirical data across 200 independent trials per configuration. Finally, we extend the construction to a two-layer \emph{hypertree}, the same multi-layer Merkle aggregation idea used internally by SPHINCS+/SLH-DSA, and show that it reduces initial KeyGen time by an order of magnitude at matched signing capacity (8.0$\times$ faster at $N\!=\!256$ and 16.2$\times$ faster at $N\!=\!1024$).
 \end{abstract}
 
 % ══════════════════════════════════════════════════════════════
@@ -40,9 +42,9 @@ We design, implement, and evaluate a complete hash-based digital signature syste
 
 Digital signatures are a cornerstone of modern information security, providing authentication, integrity, and non-repudiation. Classical schemes such as RSA and ECDSA derive their security from the computational hardness of integer factorization and the discrete logarithm problem, respectively. However, Shor's algorithm~\cite{shor1994} demonstrates that a sufficiently powerful quantum computer can solve both problems in polynomial time, rendering these schemes insecure in a post-quantum world.
 
-Hash-based signatures offer a fundamentally different security foundation. Their security rests on a single, well-studied assumption: the \emph{one-wayness} and \emph{(second-)preimage resistance} of the underlying cryptographic hash function. The best known quantum speedup against generic hash functions is Grover's algorithm, which provides only a quadratic advantage---reducing an $n$-bit hash from $2^n$ to $2^{n/2}$ security. For SHA-256, this yields approximately 128 bits of quantum security, aligning with NIST's Category-1 post-quantum requirement. This robustness is precisely why NIST standardized the hash-based scheme SLH-DSA (SPHINCS+) alongside the lattice-based ML-DSA in 2024.
+Hash-based signatures offer a fundamentally different security foundation. Their security rests on a single, well-studied assumption: the \emph{one-wayness} and \emph{(second-)preimage resistance} of the underlying cryptographic hash function. The best known quantum speedup against generic hash functions is Grover's algorithm, which provides only a quadratic advantage---reducing an $n$-bit hash from $2^n$ to $2^{n/2}$ security. For SHA-256, this yields approximately 128 bits of quantum security, aligning with NIST's Category-1 post-quantum requirement. This robustness is precisely why NIST standardized the hash-based scheme SLH-DSA (the standardized form of SPHINCS+~\cite{sphincs}) in FIPS 205~\cite{fips205}, alongside the lattice-based ML-DSA, in 2024.
 
-In this project, we implement the fundamental building blocks that underpin modern hash-based signature standards: Lamport OTS, Winternitz OTS, and the Merkle Signature Scheme. All implementations use SHA-256 and are written in pure Python with no external cryptographic libraries. We accompany each construction with unit tests, systematic benchmarks, and a thorough security analysis of the key-reuse vulnerability inherent in OTS schemes. The complete source code for this project is available on GitHub at \url{https://github.com/slaicha/crypto_project.git}.
+In this project, we implement the fundamental building blocks that underpin modern hash-based signature standards: Lamport OTS, Winternitz OTS, and the Merkle Signature Scheme. All implementations use SHA-256 and are written in pure Python with no external cryptographic libraries. We accompany each construction with unit tests, systematic benchmarks, and a quantitative demonstration of the key-reuse vulnerability inherent in OTS schemes. The complete source code for this project is available on GitHub at \url{https://github.com/slaicha/crypto_project.git}.
 
 % ══════════════════════════════════════════════════════════════
 \section{Methods}
@@ -70,13 +72,13 @@ The decisive property is that bottom trees are built \emph{lazily}. The cryptogr
     \item \textbf{The Link Signature}: This bottom-tree root is treated as a ``message'' and is signed using the Top OTS secret key corresponding to the leaf directly above that bottom tree. Because the Top OTS public keys are already committed to in the global top root, this signature securely binds the lazily generated bottom tree into the trusted global structure.
     \item \textbf{The Final Bundle}: The resulting hypertree signature bundles four components: (1) the bottom-tree OTS signature on the actual message, (2) the bottom-tree authentication path to reconstruct the bottom root, (3) the Top OTS link signature on the reconstructed bottom root, and (4) the top-tree authentication path to climb from the top leaf to the global top root.
 \end{enumerate}
-The total signing capacity is $N = 2^{h_{\text{top}} + h_{\text{bot}}}$. This lazy linking turns the up-front cost from $O(2^h)$ into $O(2^{h_{\text{top}}})$---a square-root reduction when $h_{\text{top}} \approx h_{\text{bot}}$. Verification simply walks this chain: it verifies the bottom-tree signature to get the bottom root, then verifies the top-tree signature on that bottom root to climb to the global top root.
+The total signing capacity is $N = 2^{h_{\text{top}} + h_{\text{bot}}}$. This lazy linking turns the up-front cost from $O(2^h)$ into $O(2^{h_{\text{top}}})$, since only the top tree (plus the first bottom tree) is materialized initially. When the two layers are balanced ($h_{\text{top}} \approx h_{\text{bot}} \approx h/2$), this is $O(2^{h/2}) = O(\sqrt{N})$---a square-root reduction in initial key-generation cost. Verification simply walks this chain: it verifies the bottom-tree signature to get the bottom root, then verifies the top-tree signature on that bottom root to climb to the global top root.
 
 
 % ══════════════════════════════════════════════════════════════
 \section{Experimental Results}\label{sec:experiments}
 
-All benchmarks were collected on a local Linux workstation using SHA-256. Timing measurements are reported as mean $\pm$ variance over 5 independent runs to capture both the typical execution time and its stability. A single fixed string (\texttt{"Post-quantum cryptography is exciting"}) was signed repeatedly to ensure a fair, controlled comparison across all configurations.
+All benchmarks were collected on a standard laptop using SHA-256 as the underlying hash function. Each configuration was measured over 5 independent runs; we report the \emph{mean} execution time together with the \emph{variance} across those runs, so that both the typical cost and the measurement stability are visible. Throughout, the mean is given in milliseconds and the variance (in ms\textsuperscript{2}) is shown after a $\pm$ sign as a compact stability indicator. The consistently small variances confirm that the measurements are stable and repeatable. A single fixed string (\texttt{"Post-quantum cryptography is exciting"}) was signed repeatedly to ensure a fair, controlled comparison across all configurations.
 
 % ══════════════════════════════════════════════════════════════
 \subsection{Lamport Key-Reuse Attack}
@@ -154,11 +156,11 @@ WOTS $w\!=\!64$  & $1.06 \pm 0.011$ & $0.43 \pm 0.000$ & $0.55 \pm 0.000$ & 1440
 WOTS $w\!=\!256$ & $3.00 \pm 0.006$ & $1.56 \pm 0.021$ & $1.56 \pm 0.014$ & 1088  & 1088  \\
 \bottomrule
 \end{tabular}
-\caption{OTS performance across Winternitz parameters. KG = KeyGen, Vrfy = Verify, Sig = signature size, PK = public key size.}
+\caption{OTS performance across Winternitz parameters. KG = KeyGen, Sig = signature size, PK = public key size. Times are mean $\pm$ variance over 5 runs.}
 \label{tab:ots_full}
 \end{table*}
 
-The Winternitz trade-off is clearly visible in both Table~\ref{tab:ots_full} and Figures~\ref{fig:ots_sig}--\ref{fig:ots_times}. As $w$ increases, signature size decreases logarithmically (Figure~\ref{fig:ots_sig}): WOTS with $w\!=\!256$ is 7.5$\times$ smaller than Lamport (1088\,B vs.\ 8192\,B). This reduction arises because each doubling of $w$ groups more bits per digit, reducing the number of hash chains $\ell_1$ by a factor proportional to $\log_2 w$. However, computation cost grows linearly with $w$ (Figure~\ref{fig:ots_times}), since each chain is $w-1$ hashes long: WOTS with $w\!=\!256$ is approximately 75$\times$ slower to sign than Lamport. Note that Lamport's signing is extremely fast (0.03\,ms) because it involves no hash computation at all---only selecting and copying precomputed blocks.
+The Winternitz trade-off is clearly visible in both Table~\ref{tab:ots_full} and Figures~\ref{fig:ots_sig}--\ref{fig:ots_times}. As $w$ increases, signature size decreases logarithmically (Figure~\ref{fig:ots_sig}): WOTS with $w\!=\!256$ is 7.5$\times$ smaller than Lamport (1088\,B vs.\ 8192\,B). This reduction arises because each doubling of $w$ groups more bits per digit, reducing the number of hash chains $\ell_1$ by a factor proportional to $\log_2 w$. However, computation cost grows linearly with $w$ (Figure~\ref{fig:ots_times}), since each chain is $w-1$ hashes long: WOTS with $w\!=\!256$ is roughly 78$\times$ slower to sign than Lamport. Note that Lamport's signing is extremely fast (0.02\,ms) because it involves no hash computation at all---only selecting and copying precomputed blocks.
 
 \begin{figure*}[tbp]
 \centering
@@ -280,7 +282,7 @@ Based on the complete sweep, Table~\ref{tab:recommendations} summarizes optimal 
 \textbf{Priority} & \textbf{Config} & \textbf{Sig} & \textbf{S+V} & $N$ \\
 \midrule
 Min size    & $w\!=\!256,h\!=\!4$ & 2308\,B  & 4.52\,ms & 16  \\
-Min compute & Lamp., $h\!=\!4$    & 24708\,B & 0.33\,ms & 16  \\
+Min compute & Lamp., $h\!=\!4$    & 24640\,B & 0.33\,ms & 16  \\
 Balanced    & $w\!=\!16, h\!=\!5$ & 4452\,B  & 0.61\,ms & 32  \\
 Max msgs    & $w\!=\!16, h\!=\!8$ & 4548\,B  & 0.61\,ms & 256 \\
 \bottomrule
@@ -313,11 +315,11 @@ Hypertree, $h_t\!=\!h_b\!=\!5$ & 1024 & $27.4 \pm 0.4$   & 0.19 & 0.43 & 8940 \\
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=\linewidth]{benchmarks/hypertree_keygen.png}
-\caption{Initial KeyGen time: flat MSS vs 2-layer hypertree at matched signing capacities. The hypertree is 8.2$\times$ faster at $N\!=\!256$ and 15.6$\times$ faster at $N\!=\!1024$, confirming the predicted $O(\sqrt{N})$ behavior.}
+\caption{Initial KeyGen time: flat MSS vs 2-layer hypertree at matched signing capacities. The hypertree is 8.0$\times$ faster at $N\!=\!256$ and 16.2$\times$ faster at $N\!=\!1024$, consistent with the predicted $O(\sqrt{N})$ reduction.}
 \label{fig:hypertree}
 \end{figure}
 
-The data confirms three predictions. First, KeyGen time drops by roughly the expected $\sqrt{N}$ factor (8.2$\times$ at $N\!=\!256$, 15.6$\times$ at $N\!=\!1024$). Second, single-message Sign time is essentially unchanged, because signing still costs one bottom-tree MSS sign plus a precomputed top-tree certificate. Third, signature size roughly doubles ($\sim$4.5\,KB to $\sim$8.9\,KB), since each hypertree signature now carries two MSS signatures instead of one---the standard size-vs-cost trade-off of multi-layer Merkle constructions. This is precisely the engineering trick that lets SPHINCS+ scale to $N\!=\!2^{64}$ while keeping initial KeyGen practical.
+The data is consistent with three predictions. First, KeyGen time drops by roughly the expected $\sqrt{N}$ factor (8.0$\times$ at $N\!=\!256$, 16.2$\times$ at $N\!=\!1024$); the larger speedup at the larger capacity matches the $O(\sqrt{N})$ trend. Second, single-message Sign time is essentially unchanged, because signing still costs one bottom-tree MSS sign plus a precomputed top-tree certificate. Third, signature size roughly doubles ($\sim$4.5\,KB to $\sim$8.9\,KB), since each hypertree signature now carries two MSS signatures instead of one---the standard size-vs-cost trade-off of multi-layer Merkle constructions. This is precisely the engineering trick that lets SPHINCS+ scale to $N\!=\!2^{64}$ while keeping initial KeyGen practical.
 
 % ══════════════════════════════════════════════════════════════
 \section{Conclusion}
@@ -325,7 +327,7 @@ The data confirms three predictions. First, KeyGen time drops by roughly the exp
 We implemented a complete hash-based signature pipeline from Lamport OTS through WOTS to the Merkle Signature Scheme, extended it to a two-layer hypertree, and supported all of it with comprehensive benchmarks and a quantitative key-reuse attack. Our key findings are:
 
 \begin{itemize}
-    \item WOTS with $w\!=\!16$ offers the best practical balance: 3.8$\times$ smaller signatures than Lamport with sign+verify under 0.6\,ms.
+    \item WOTS with $w\!=\!16$ offers the best practical balance: as a one-time signature it is 3.8$\times$ smaller than Lamport (2{,}144\,B vs.\ 8{,}192\,B), and when used as the Merkle leaf it yields MSS signatures roughly 5.5$\times$ smaller than Lamport leaves.
     \item Flat MSS KeyGen scales as $O(2^h)$, while signing, verification, and signature size are nearly independent of tree height.
     \item Lamport key reuse is catastrophic: after $\sim$10 reuses, forgery succeeds with $>$78\% probability; after 15 reuses, it is essentially certain. We recovered the full 512-block secret key byte-for-byte after only 20 reuses.
     \item The two-layer hypertree (Section~\ref{sec:hypertree}) reduces initial KeyGen time by 8--16$\times$ at matched signing capacity, at the cost of roughly doubling the signature size---the same engineering trick used by SPHINCS+/SLH-DSA.
@@ -338,7 +340,8 @@ These results confirm that hash-based signatures are a viable and well-understoo
 \bibitem{shor1994} P.~W.~Shor, ``Algorithms for quantum computation: discrete logarithms and factoring,'' \emph{Proc.\ 35th Annual Symp.\ on Foundations of Computer Science (FOCS)}, pp.~124--134, IEEE, 1994.
 \bibitem{lamport1979} L.~Lamport, ``Constructing digital signatures from a one-way function,'' \emph{SRI International, Technical Report CSL-98}, 1979.
 \bibitem{merkle1989} R.~C.~Merkle, ``A certified digital signature,'' \emph{Advances in Cryptology --- CRYPTO '89}, LNCS 435, pp.~218--238, Springer, 1990.
-\bibitem{sphincs} D.~J.\ Bernstein et al., ``SPHINCS+: Submission to the NIST post-quantum cryptography standardization project,'' 2017.
+\bibitem{sphincs} D.~J.\ Bernstein et al., ``SPHINCS+: Submission to the NIST post-quantum cryptography standardization project,'' original submission, 2017.
+\bibitem{fips205} National Institute of Standards and Technology, ``Stateless Hash-Based Digital Signature Standard,'' \emph{FIPS 205 (SLH-DSA)}, 2024.
 \end{thebibliography}
 
 \end{document}
